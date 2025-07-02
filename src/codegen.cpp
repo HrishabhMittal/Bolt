@@ -1,5 +1,6 @@
 #include "codeutil.cpp"
 #include <memory>
+#include <string>
 class StatementAST {
     public:
     virtual std::string codegen()=0;
@@ -94,8 +95,6 @@ public:
     }
     std::string codegen() override {
     }
-    std::string codegen_function(const PrototypeAST *proto = nullptr) {
-    }
 };
 class FunctionAST : public StatementAST {
 public:
@@ -164,5 +163,16 @@ public:
         statements.push_back(std::move(stmt));
     }
     std::string codegen() {
+        std::string code="section .text\n"
+                         "global _start:\n";
+        for (auto&& i:statements) {
+            code+=i->codegen();
+        }
+        code+="_start:\n"
+              "call main\n"
+              "mov rdi,rax\n"
+              "mov rax, 60\n"
+              "syscall";
+        return code;
     }
 };

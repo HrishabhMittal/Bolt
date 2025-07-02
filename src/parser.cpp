@@ -16,16 +16,9 @@ class Parser {
     bool match(TokenType type, const std::string& val = "") {
         return currentToken.ttype == type && (val.empty() || currentToken.value == val);
     }
-    std::vector<std::string> binops = {
-        "+", "-", "*", "/", "%",
-        "==", "!=", "<", ">", "<=", ">=",
-        "&&", "||",
-        "&", "|", "^", "<<", ">>",
-        "=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
-    };
     bool match_binop() {
-        for (auto& i:binops) {
-            if (i==currentToken.value) return true;
+        for (auto& i:binops_by_precedence) for (auto& j:i) {
+            if (j==currentToken.value) return true;
         }
         return false;
     }
