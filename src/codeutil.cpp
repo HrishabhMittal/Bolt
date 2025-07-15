@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 std::vector<std::string> reg_order_function_args = {
@@ -19,15 +20,39 @@ std::vector<std::string> calc_registers_simd = {
     "xmm8", "xmm9", "xmm10", "xmm11",
     "xmm12", "xmm13", "xmm14", "xmm15"
 };
+
+
+
+namespace IdentifierManager {
+    std::vector<std::vector<std::pair<int,Value>>> v;
+}
 namespace RegisterManager {
     namespace {
         std::unordered_map<std::string,bool> locked;
+        std::vector<std::string> pushed; 
     }
     void lock(const std::string& reg) {
         locked[reg]=1;
     }
     void unlock(const std::string& reg) {
         locked[reg]=0;
+    }
+    std::string save(const std::string& reg) {
+        pushed.push_back(reg);
+        return "push "+reg+"\n";
+    }
+    std::string load_back() {
+        std::string reg=pushed.back();
+        pushed.pop_back();
+        return "pop "+reg+"\n";
+    }
+    std::string load_some(int n) {
+        std::string out;
+        while (n--) {
+            out+="pop "+pushed.back()+'\n';
+            pushed.pop_back();
+        }
+        return out;
     }
     std::string get_new_reg(Value v) {
         if (v==DOUBLE||v==FLOAT) {
@@ -46,11 +71,6 @@ namespace RegisterManager {
             return "stack";
         }
         throw std::runtime_error("type not supported yet");
-    }
-};
-namespace FunctionManager {
-    void funcArgs() {
-        
     }
 }
 std::vector<std::vector<std::string>> ops_by_precedence = {
