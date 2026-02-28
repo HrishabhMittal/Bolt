@@ -2,8 +2,11 @@
 
 int main(int argc,char**argv) {
     if (argc==1) return 1;
-    Parser parser = Lexer(argv[1]);
-    Emitter emitter(parser);
-    emitter.emitcode("a.asm");
+    Lexer l(argv[1]);
+    Parser p(l);
+    auto program=p.parseProgram();
+    program->print();
+    // Emitter e(p);
+    // e.emitcode();
     return 0;
 }

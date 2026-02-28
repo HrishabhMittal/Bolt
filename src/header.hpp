@@ -9,7 +9,7 @@ std::vector<std::string> keywords = {
     "struct",
     "return", "function",
     "import",
-    "int", "float", "double", "char", "bool", "long",
+    "int", "float", "double", "char", "bool", "long", "string", "void",
     "true","false"
 };
 

@@ -52,6 +52,16 @@ public:
         return t;
     }
     Token _gettoken() {
+        Token t = __gettoken();
+        if (t.value == "#") {
+            while (t.ttype != TokenType::NEWLINE && t.ttype != TokenType::TK_EOF) {
+                t = __gettoken();
+            }
+            return _gettoken();
+        }
+        return t;
+    }
+    Token __gettoken() {
         while (pos_line < (int64_t)data.size()) {
             std::string& line_str = data[pos_line];
             if (pos_char >= (int64_t)line_str.size()) {

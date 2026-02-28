@@ -10,6 +10,7 @@ public:
     Emitter(Parser& p): program(std::move(p.parseProgram())) {}
     void emitcode(std::string filename) {
         std::ofstream file(filename);
-        file<<program->codegen();
+        program->print();
+        // file<<program->codegen();
     }
 };

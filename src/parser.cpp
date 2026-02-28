@@ -1,4 +1,5 @@
 #include "codegen.cpp"
+#include <iostream>
 class Parser {
     Lexer l;
     Token currentToken;
@@ -168,15 +169,17 @@ class Parser {
         throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {
-        // std::cout<<"parsing proto: "<<std::endl;
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        std::cout<<"parsing proto: "<<std::endl;
+        std::cout<<tokenToString(currentToken)<<std::endl;
         std::vector<std::pair<Token, Token>> args;
         if (!match(TokenType::PUNCTUATOR, ")")) {
-            do {
+            while (true) {
                 Token name = expect(TokenType::IDENTIFIER);
                 Token type = expect(TokenType::KEYWORD);
                 args.push_back({type, name});
-            } while (match(TokenType::PUNCTUATOR, ","));
+                if (!match(TokenType::PUNCTUATOR, ",")) break;
+                expect(TokenType::PUNCTUATOR, ",");
+            } 
         }
         return std::make_unique<PrototypeAST>(std::move(args));
     }

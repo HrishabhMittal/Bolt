@@ -1,2 +1,2 @@
 all:
-	g++ src/main.cpp -o boltc 
+	g++ src/main.cpp -o boltc -g
