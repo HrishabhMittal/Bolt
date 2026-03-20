@@ -109,18 +109,48 @@ class Parser {
         // std::cout<<tokenToString(currentToken)<<std::endl;
         return expr;
     }
-    
-    std::unique_ptr<ExprAST> parseExpr() {
-        // std::cout<<"parsing expr at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
-        auto lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
-        if (!match_binop()) {
-            return lhs;
+    int getOpPrecedence() {
+        if (currentToken.ttype != TokenType::PUNCTUATOR) return -1;
+        
+        for (size_t i = 0; i < binops_by_precedence.size(); ++i) {
+            for (const auto& op : binops_by_precedence[i]) {
+                if (op == currentToken.value) {
+                    return binops_by_precedence.size() - i; 
+                }
+            }
         }
-        auto op = expect(TokenType::PUNCTUATOR);
-        auto rhs = parseExpr();
-        return std::make_unique<BinaryExprAST>(std::move(lhs),op,std::move(rhs));
+        return -1;
     }
+
+    std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
+        auto lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
+        while (true) {
+            if (!match_binop()) {
+                return lhs;
+            }
+            int tokPrec = getOpPrecedence();
+            
+            if (tokPrec < exprPrec) {
+                return lhs;
+            }
+            Token op = currentToken;
+            next();
+            int nextPrec = (tokPrec == 1) ? tokPrec : tokPrec + 1;
+            auto rhs = parseExpr(nextPrec);
+            lhs = std::make_unique<BinaryExprAST>(std::move(lhs), op, std::move(rhs));
+        }
+    }
+    // std::unique_ptr<ExprAST> parseExpr() {
+    //     // std::cout<<"parsing expr at: ";
+    //     // std::cout<<tokenToString(currentToken)<<std::endl;
+    //     auto lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
+    //     if (!match_binop()) {
+    //         return lhs;
+    //     }
+    //     auto op = expect(TokenType::PUNCTUATOR);
+    //     auto rhs = parseExpr();
+    //     return std::make_unique<BinaryExprAST>(std::move(lhs),op,std::move(rhs));
+    // }
     std::unique_ptr<BlockAST> parseBlock() {
         // std::cout<<"parsing block at: ";
         // std::cout<<tokenToString(currentToken)<<std::endl;

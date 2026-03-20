@@ -2,9 +2,9 @@
 #include <ostream>
 #include <string>
 #include <vector>
-std::string alone = "(){}[];,.";
-std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
-std::vector<std::string> keywords = {
+inline std::string alone = "(){}[];,.";
+inline std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
+inline std::vector<std::string> keywords = {
     "if", "else", "while", "break", "continue", "for",
     "struct",
     "return", "function",
@@ -13,7 +13,7 @@ std::vector<std::string> keywords = {
     "true","false"
 };
 
-std::string repeat(const std::string& s,int i) {
+inline std::string repeat(const std::string& s,int i) {
     std::string str;
     for (int j=0;j<i;j++) str+=s;
     return str;
@@ -48,7 +48,7 @@ struct Token {
 
 };
 
-std::string tokenToString(const Token& tok) {
+inline std::string tokenToString(const Token& tok) {
     std::string typeStr;
     switch (tok.ttype) {
         case TokenType::IDENTIFIER: typeStr = "IDENTIFIER"; break;
@@ -65,13 +65,13 @@ std::string tokenToString(const Token& tok) {
     return "Token(" + typeStr +
            ", value='" + tok.value + "')";
 }
-std::ostream& operator<<(std::ostream& out,Token t) {
+inline std::ostream& operator<<(std::ostream& out,Token t) {
     //out<<"Token(type:"<<(int)t.ttype<<", value:"<<t.value<<", lineno:"<<t.lineno<<", startindex:"<<t.startindex<<", line:"<<*t.line<<")";
     out<<tokenToString(t)<<std::endl;
     return out;
 }
 
-Value type(std::string type_str) {
+inline Value type(std::string type_str) {
     if (type_str == "bool") return BOOL;
     if (type_str == "char") return CHAR;
     if (type_str == "int") return INT;
@@ -80,7 +80,7 @@ Value type(std::string type_str) {
     if (type_str == "string") return STRING;
     throw std::runtime_error("Unrecognised Value: " + type_str);
 }
-std::string typeToStr(Value type) {
+inline std::string typeToStr(Value type) {
     if (type == BOOL) return "BOOL";
     if (type == CHAR) return "CHAR";
     if (type == INT) return "INT";
