@@ -7,96 +7,10 @@
 #include <sstream>
 #include <stdexcept>
 
-struct VarInfo {
-    int bp_offset; 
-    Value type;
-};
-
-class CodeGenContext {
-public:
-    std::vector<std::unordered_map<std::string,VarInfo>> scopes;
-    int current_stack_offset=0;
-    int label_count=0;
-
-    std::vector<std::string> loop_start_labels; 
-    std::vector<std::string> loop_end_labels;   
-
-    std::string current_function_name="";
-
-    std::stringstream text_section;
-    std::stringstream data_section;
-
-    std::vector<bool> int_regs_used;
-    std::vector<bool> float_regs_used;
-
-    CodeGenContext() {
-        int_regs_used.resize(calc_registers_64.size(),false);
-        float_regs_used.resize(calc_registers_simd.size(),false);
-        pushScope(); 
-    }
-
-    void pushScope() {
-        scopes.push_back({});
-    }
-    void popScope() {
-        scopes.pop_back();
-    }
-
-    void declareVar(const std::string& name,Value type) {
-        current_stack_offset-=8;
-        scopes.back()[name]={current_stack_offset,type};
-    }
-
-    VarInfo getVar(const std::string& name) {
-        for (auto it=scopes.rbegin();it!=scopes.rend();it++) {
-            if (it->find(name)!=it->end()) {
-                return it->at(name);
-            }
-        }
-        throw std::runtime_error("Undeclared variable: "+name);
-    }
-
-    int allocIntReg() {
-        for (size_t i=0;i<int_regs_used.size();i++) {
-            if (!int_regs_used[i]) {
-                int_regs_used[i]=true;
-                return i;
-            }
-        }
-        return -1;
-    }
-    void freeIntReg(int index) {
-        if (index>=0) int_regs_used[index]=false;
-    }
-
-    int allocFloatReg() {
-        for (size_t i=0;i<float_regs_used.size();i++) {
-            if (!float_regs_used[i]) {
-                float_regs_used[i]=true;
-                return i;
-            }
-        }
-        return -1; 
-    }
-    void freeFloatReg(int index) {
-        if (index>=0) float_regs_used[index]=false;
-    }
-
-    std::string newLabel(const std::string& prefix) {
-        return prefix+std::to_string(label_count++);
-    }
-};
-
-struct ExprResult {
-    int reg_idx;    
-    bool is_float;  
-    bool spilled;   
-};
-
 class StatementAST {
 public:
     virtual void print(int indent=0)=0;
-    virtual void codegen(CodeGenContext& ctx)=0;
+    virtual void codegen()=0;
     virtual ~StatementAST()=default;
 };
 
@@ -106,12 +20,7 @@ void printSpace(int space) {
 
 class ExprAST: public StatementAST {
 public:
-    virtual ExprResult codegenExpr(CodeGenContext& ctx)=0; 
-
-    virtual void codegen(CodeGenContext& ctx) override {
-        ExprResult res=codegenExpr(ctx);
-        if (res.is_float) ctx.freeFloatReg(res.reg_idx);
-        else ctx.freeIntReg(res.reg_idx);
+    virtual void codegen() override {
     }
 };
 
@@ -132,65 +41,6 @@ public:
         rhs->print(indent);
     }
 
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        ExprResult lhs_res=lhs->codegenExpr(ctx);
-
-        bool lhs_spilled=false;
-        if (lhs_res.reg_idx==-1) {
-            ctx.text_section<<"    push rax ; SPILL LHS\n";
-            lhs_spilled=true;
-        }
-
-        ExprResult rhs_res=rhs->codegenExpr(ctx);
-
-        if (lhs_spilled) {
-            lhs_res.reg_idx=ctx.allocIntReg(); 
-            ctx.text_section<<"    pop "<<calc_registers_64[lhs_res.reg_idx]<<" ; RESTORE LHS\n";
-        }
-
-        if (lhs_res.is_float||rhs_res.is_float) {
-            std::string regL=calc_registers_simd[lhs_res.reg_idx];
-            std::string regR=calc_registers_simd[rhs_res.reg_idx];
-
-            if (op.value=="+") ctx.text_section<<"    addsd "<<regL<<","<<regR<<"\n";
-            else if (op.value=="-") ctx.text_section<<"    subsd "<<regL<<","<<regR<<"\n";
-            else if (op.value=="*") ctx.text_section<<"    mulsd "<<regL<<","<<regR<<"\n";
-            else if (op.value=="/") ctx.text_section<<"    divsd "<<regL<<","<<regR<<"\n";
-
-            ctx.freeFloatReg(rhs_res.reg_idx); 
-            return {lhs_res.reg_idx,true,false};
-        }
-
-        std::string regL=calc_registers_64[lhs_res.reg_idx];
-        std::string regR=calc_registers_64[rhs_res.reg_idx];
-
-        if (op.value=="+") {
-            ctx.text_section<<"    add "<<regL<<","<<regR<<"\n";
-        } else if (op.value=="-") {
-            ctx.text_section<<"    sub "<<regL<<","<<regR<<"\n";
-        } else if (op.value=="*") {
-            ctx.text_section<<"    imul "<<regL<<","<<regR<<"\n";
-        } else if (op.value=="/") {
-            ctx.text_section<<"    push rax\n    push rdx\n";
-            ctx.text_section<<"    mov rax,"<<regL<<"\n";
-            ctx.text_section<<"    cqo\n"; 
-            ctx.text_section<<"    idiv "<<regR<<"\n";
-            ctx.text_section<<"    mov "<<regL<<",rax\n";
-            ctx.text_section<<"    pop rdx\n    pop rax\n";
-        } else {
-            ctx.text_section<<"    cmp "<<regL<<","<<regR<<"\n";
-            if (op.value=="==") ctx.text_section<<"    sete al\n";
-            else if (op.value=="!=") ctx.text_section<<"    setne al\n";
-            else if (op.value==">") ctx.text_section<<"    setg al\n";
-            else if (op.value=="<") ctx.text_section<<"    setl al\n";
-            else if (op.value==">=") ctx.text_section<<"    setge al\n";
-            else if (op.value=="<=") ctx.text_section<<"    setle al\n";
-            ctx.text_section<<"    movzx "<<regL<<",al\n";
-        }
-
-        ctx.freeIntReg(rhs_res.reg_idx); 
-        return {lhs_res.reg_idx,false,false}; 
-    }
 };
 
 class UnaryExprAST : public ExprAST {
@@ -206,17 +56,6 @@ public:
         std::cout<<"op: "<<(op)<<std::endl;
         operand->print(indent);
     }
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        ExprResult res=operand->codegenExpr(ctx);
-        if (op.value=="-") {
-            if (res.is_float) {
-
-            } else {
-                ctx.text_section<<"    neg "<<calc_registers_64[res.reg_idx]<<"\n";
-            }
-        }
-        return res;
-    }
 };
 
 class BooleanExprAST : public ExprAST {
@@ -229,11 +68,6 @@ public:
         indent+=2;
         printSpace(indent);
         std::cout<<"bool: "<<(boolean)<<std::endl;
-    }
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        int reg=ctx.allocIntReg();
-        ctx.text_section<<"    mov "<<calc_registers_64[reg]<<","<<(boolean.value=="true"?"1" : "0")<<"\n";
-        return {reg,false,false};
     }
 };
 
@@ -248,20 +82,6 @@ public:
         printSpace(indent);
         std::cout<<"bool: "<<(number)<<std::endl;
     }
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        bool is_float=(number.value.find('.')!=std::string::npos);
-        if (is_float) {
-            int reg=ctx.allocFloatReg();
-            std::string label=ctx.newLabel(".float_const_");
-            ctx.data_section<<label<<" dq "<<number.value<<"\n";
-            ctx.text_section<<"    movsd "<<calc_registers_simd[reg]<<",["<<label<<"]\n";
-            return {reg,true,false};
-        } else {
-            int reg=ctx.allocIntReg();
-            ctx.text_section<<"    mov "<<calc_registers_64[reg]<<","<<number.value<<"\n";
-            return {reg,false,false};
-        }
-    }
 };
 
 class StringExprAST : public ExprAST {
@@ -275,13 +95,6 @@ public:
         printSpace(indent);
         std::cout<<"bool: "<<str<<std::endl;
     }
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        int reg=ctx.allocIntReg();
-        std::string label=ctx.newLabel(".str_const_");
-        ctx.data_section<<label<<" db "<<str.value<<",0\n";
-        ctx.text_section<<"    lea "<<calc_registers_64[reg]<<",["<<label<<"]\n";
-        return {reg,false,false};
-    }
 };
 
 class IdentifierExprAST : public ExprAST {
@@ -294,19 +107,6 @@ public:
         indent+=2;
         printSpace(indent);
         std::cout<<"identifier: "<<(identifier)<<std::endl;
-    }
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        VarInfo info=ctx.getVar(identifier.value);
-        bool is_float=(info.type==DOUBLE||info.type==FLOAT);
-        if (is_float) {
-            int reg=ctx.allocFloatReg();
-            ctx.text_section<<"    movsd "<<calc_registers_simd[reg]<<",[rbp"<<info.bp_offset<<"]\n";
-            return {reg,true,false};
-        } else {
-            int reg=ctx.allocIntReg();
-            ctx.text_section<<"    mov "<<calc_registers_64[reg]<<",[rbp"<<info.bp_offset<<"]\n";
-            return {reg,false,false};
-        }
     }
 };
 
@@ -325,27 +125,6 @@ public:
             i->print(indent);
         }
     }
-    virtual ExprResult codegenExpr(CodeGenContext& ctx) override {
-        int int_arg_idx=0;
-        int float_arg_idx=0;
-
-        for (auto& arg : args) {
-            ExprResult res=arg->codegenExpr(ctx);
-            if (res.is_float && float_arg_idx < 8) {
-                ctx.text_section<<"    movsd xmm"<<float_arg_idx++<<","<<calc_registers_simd[res.reg_idx]<<"\n";
-                ctx.freeFloatReg(res.reg_idx);
-            } else if (!res.is_float && int_arg_idx < 6) {
-                ctx.text_section<<"    mov "<<reg_order_function_args[int_arg_idx++]<<","<<calc_registers_64[res.reg_idx]<<"\n";
-                ctx.freeIntReg(res.reg_idx);
-            }
-        }
-
-        ctx.text_section<<"    call "<<callee.value<<"\n";
-
-        int ret_reg=ctx.allocIntReg(); 
-        ctx.text_section<<"    mov "<<calc_registers_64[ret_reg]<<",rax\n"; 
-        return {ret_reg,false,false};
-    }
 };
 
 class DeclarationAST : public StatementAST {
@@ -361,19 +140,7 @@ public:
         std::cout<<"callee: "<<identifier<<std::endl;
         expr->print(indent);
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        ExprResult res=expr->codegenExpr(ctx);
-        Value t=res.is_float?DOUBLE:INT; 
-        ctx.declareVar(identifier.value,t);
-        int offset=ctx.getVar(identifier.value).bp_offset;
-
-        if (res.is_float) {
-            ctx.text_section<<"    movsd [rbp"<<offset<<"],"<<calc_registers_simd[res.reg_idx]<<"\n";
-            ctx.freeFloatReg(res.reg_idx);
-        } else {
-            ctx.text_section<<"    mov [rbp"<<offset<<"],"<<calc_registers_64[res.reg_idx]<<"\n";
-            ctx.freeIntReg(res.reg_idx);
-        }
+    virtual void codegen() override {
     }
 };
 
@@ -390,17 +157,7 @@ public:
         std::cout<<"callee: "<<identifier<<std::endl;
         expr->print(indent);
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        ExprResult res=expr->codegenExpr(ctx);
-        int offset=ctx.getVar(identifier.value).bp_offset;
-
-        if (res.is_float) {
-            ctx.text_section<<"    movsd [rbp"<<offset<<"],"<<calc_registers_simd[res.reg_idx]<<"\n";
-            ctx.freeFloatReg(res.reg_idx);
-        } else {
-            ctx.text_section<<"    mov [rbp"<<offset<<"],"<<calc_registers_64[res.reg_idx]<<"\n";
-            ctx.freeIntReg(res.reg_idx);
-        }
+    virtual void codegen() override {
     }
 };
 
@@ -417,7 +174,7 @@ public:
             std::cout<<i.first<<" "<<i.second<<std::endl;
         }
     }
-    virtual void codegen(CodeGenContext& ctx) override {}
+    virtual void codegen() override {}
 };
 
 class BlockAST : public StatementAST {
@@ -436,10 +193,7 @@ public:
             i->print(indent);
         }
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        ctx.pushScope();
-        for (auto&& i:statements) i->codegen(ctx);
-        ctx.popScope();
+    virtual void codegen() override {
     }
 };
 
@@ -462,67 +216,7 @@ public:
         proto->print(indent);
         body->print(indent);
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        std::string funcName=name.value;
-        std::string prevFunc=ctx.current_function_name;
-        ctx.current_function_name=funcName;
-
-        ctx.text_section<<"\nglobal "<<funcName<<"\n";
-        ctx.text_section<<funcName<<":\n";
-
-        ctx.text_section<<"    push rbp\n";
-        ctx.text_section<<"    mov rbp,rsp\n";
-
-        std::string stack_placeholder="__LOCAL_SPACE_"+funcName+"__";
-        ctx.text_section<<"    sub rsp,"<<stack_placeholder<<" ; Local space\n"; 
-
-        ctx.pushScope();
-        ctx.current_stack_offset=0;
-
-        for (size_t i=0;i<proto->args.size();i++) {
-            std::string argName=proto->args[i].second.value;
-            std::string argType=proto->args[i].first.value;
-            Value vType=type(argType);
-
-            ctx.declareVar(argName,vType);
-            int bp_off=ctx.getVar(argName).bp_offset;
-
-            if (vType==DOUBLE||vType==FLOAT) {
-                if (i < 8) { 
-                    ctx.text_section<<"    movsd [rbp"<<bp_off<<"],xmm"<<i<<"\n";
-                }
-            } else {
-                if (i < 6) { 
-                    ctx.text_section<<"    mov [rbp"<<bp_off<<"],"<<reg_order_function_args[i]<<"\n";
-                }
-            }
-        }
-
-        body->codegen(ctx);
-
-        ctx.text_section<<".end_"<<funcName<<":\n";
-        ctx.text_section<<"    mov rsp,rbp\n";
-        ctx.text_section<<"    pop rbp\n";
-        ctx.text_section<<"    ret\n";
-
-        ctx.popScope();
-
-        std::string code=ctx.text_section.str();
-        size_t pos=code.find(stack_placeholder);
-        if (pos!=std::string::npos) {
-
-            int alloc_size=-ctx.current_stack_offset; 
-
-            alloc_size=(alloc_size+15)&~15; 
-
-            code.replace(pos,stack_placeholder.length(),std::to_string(alloc_size));
-
-            ctx.text_section.str("");
-            ctx.text_section.clear();
-            ctx.text_section<<code;
-        }
-
-        ctx.current_function_name=prevFunc;
+    virtual void codegen() override {
     }
 };
 class ConditionalAST : public StatementAST {
@@ -556,41 +250,9 @@ public:
             elseBlock->print(indent+2);
         }
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        std::string endLabel=ctx.newLabel(".L_end_if_");
-
-        ExprResult condRes=ifCondition->codegenExpr(ctx);
-        std::string nextLabel=ctx.newLabel(".L_next_cond_");
-
-        ctx.text_section<<"    cmp "<<calc_registers_64[condRes.reg_idx]<<",0\n";
-        ctx.text_section<<"    je "<<nextLabel<<"\n";
-        ctx.freeIntReg(condRes.reg_idx);
-
-        ifBlock->codegen(ctx);
-        ctx.text_section<<"    jmp "<<endLabel<<"\n";
-        ctx.text_section<<nextLabel<<":\n";
-
-        for (auto& elif : elseIfs) {
-            ExprResult elifCondRes=elif.first->codegenExpr(ctx);
-            std::string elifNextLabel=ctx.newLabel(".L_next_cond_");
-
-            ctx.text_section<<"    cmp "<<calc_registers_64[elifCondRes.reg_idx]<<",0\n";
-            ctx.text_section<<"    je "<<elifNextLabel<<"\n";
-            ctx.freeIntReg(elifCondRes.reg_idx);
-
-            elif.second->codegen(ctx);
-            ctx.text_section<<"    jmp "<<endLabel<<"\n";
-            ctx.text_section<<elifNextLabel<<":\n";
-        }
-
-        if (elseBlock) {
-            elseBlock->codegen(ctx);
-        }
-
-        ctx.text_section<<endLabel<<":\n";
+    virtual void codegen() override {
     }
 };
-
 class WhileAST : public StatementAST {
 public:
     std::unique_ptr<ExprAST> condition;
@@ -607,27 +269,7 @@ public:
         std::cout<<"Body: "<<std::endl;
         body->print(indent+2);
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        std::string startLabel=ctx.newLabel(".L_while_start_");
-        std::string endLabel=ctx.newLabel(".L_while_end_");
-
-        ctx.loop_start_labels.push_back(startLabel);
-        ctx.loop_end_labels.push_back(endLabel);
-
-        ctx.text_section<<startLabel<<":\n";
-
-        ExprResult condRes=condition->codegenExpr(ctx);
-        ctx.text_section<<"    cmp "<<calc_registers_64[condRes.reg_idx]<<",0\n";
-        ctx.text_section<<"    je "<<endLabel<<"\n";
-        ctx.freeIntReg(condRes.reg_idx);
-
-        body->codegen(ctx);
-
-        ctx.text_section<<"    jmp "<<startLabel<<"\n";
-        ctx.text_section<<endLabel<<":\n";
-
-        ctx.loop_start_labels.pop_back();
-        ctx.loop_end_labels.pop_back();
+    virtual void codegen() override {
     }
 };
 
@@ -656,42 +298,7 @@ public:
         std::cout<<"Body: "<<std::endl;
         body->print(indent+2);
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        ctx.pushScope();
-
-        if (init) init->codegen(ctx);
-
-        std::string startLabel=ctx.newLabel(".L_for_start_");
-        std::string endLabel=ctx.newLabel(".L_for_end_");
-        std::string updateLabel=ctx.newLabel(".L_for_update_");
-
-        ctx.loop_start_labels.push_back(updateLabel);
-        ctx.loop_end_labels.push_back(endLabel);
-
-        ctx.text_section<<startLabel<<":\n";
-
-        if (condition) {
-            ExprResult condRes=condition->codegenExpr(ctx);
-            ctx.text_section<<"    cmp "<<calc_registers_64[condRes.reg_idx]<<",0\n";
-            ctx.text_section<<"    je "<<endLabel<<"\n";
-            ctx.freeIntReg(condRes.reg_idx);
-        }
-
-        if (body) body->codegen(ctx);
-
-        ctx.text_section<<updateLabel<<":\n";
-        if (update) {
-            ExprResult updateRes=update->codegenExpr(ctx);
-            if (updateRes.is_float) ctx.freeFloatReg(updateRes.reg_idx);
-            else ctx.freeIntReg(updateRes.reg_idx);
-        }
-
-        ctx.text_section<<"    jmp "<<startLabel<<"\n";
-        ctx.text_section<<endLabel<<":\n";
-
-        ctx.loop_start_labels.pop_back();
-        ctx.loop_end_labels.pop_back();
-        ctx.popScope();
+    virtual void codegen() override {
     }
 };
 
@@ -705,19 +312,7 @@ public:
         indent+=2;
         if (expr) expr->print(indent);
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        if (expr) {
-            ExprResult res=expr->codegenExpr(ctx);
-            if (res.is_float) {
-                ctx.text_section<<"    movsd xmm0,"<<calc_registers_simd[res.reg_idx]<<"\n";
-                ctx.freeFloatReg(res.reg_idx);
-            } else {
-                ctx.text_section<<"    mov rax,"<<calc_registers_64[res.reg_idx]<<"\n";
-                ctx.freeIntReg(res.reg_idx);
-            }
-        }
-
-        ctx.text_section<<"    jmp .end_"<<ctx.current_function_name<<"\n";
+    virtual void codegen() override {
     }
 };
 
@@ -732,16 +327,7 @@ public:
         printSpace(indent);
         std::cout<<"keyword: "<<keyword<<std::endl;
     }
-    virtual void codegen(CodeGenContext& ctx) override {
-        if (keyword.value=="break") {
-            if (!ctx.loop_end_labels.empty()) {
-                ctx.text_section<<"    jmp "<<ctx.loop_end_labels.back()<<"\n";
-            }
-        } else if (keyword.value=="continue") {
-            if (!ctx.loop_start_labels.empty()) {
-                ctx.text_section<<"    jmp "<<ctx.loop_start_labels.back()<<"\n";
-            }
-        }
+    virtual void codegen() override {
     }
 };
 
@@ -760,7 +346,7 @@ public:
             i->print(indent);
         }
     }
-    void codegen(CodeGenContext& ctx) {
-        for (auto&& i:statements) i->codegen(ctx);
+    void codegen() {
+        for (auto&& i:statements) i->codegen();
     }
 };

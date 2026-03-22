@@ -1,2 +1,3 @@
 all:
-	g++ src/main.cpp -o boltc -g
+	mkdir -p build
+	g++ src/main.cpp -o build/boltc -g
