@@ -1,19 +1,16 @@
-# Bolt: a Golang like* language that compiles to NASM ELF64 Assembly
-This language syntax currently draw a lot of inspiration from golang but is not yet finalised and the syntax of the language might change in the future.
+# Bolt: A Programming Language
+Bolt is a programming langauge currently being written that runs on BVM (Bolt Virtual Machine)
 
 ## Implemented Stuff
 - [X] Lexer
 - [ ] Pre-Processor
 - [X] Parser
-- [X] Emitter
-
-# Changing
-- (Maybe) Change from assembly to a VM with custom bytecode to make this crossplatform
+- [ ] Emitter (re-write)
 
 # To Do
-
+- [ ] complete migration from NASM to BVM bytecode
 - [ ] imports
-- [ ] external linking
+- [ ] linking to c libraries
 - [ ] change syntax
 - [ ] string support
 - [ ] call to and link with c stdlib
