@@ -5,10 +5,10 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 - [X] Lexer
 - [ ] Pre-Processor
 - [X] Parser
-- [ ] Emitter (re-write)
+- [X] Emitter
 
 # To Do
-- [ ] complete migration from NASM to BVM bytecode
+- [X] complete migration from NASM to BVM bytecode
 - [ ] imports
 - [ ] linking to c libraries
 - [ ] change syntax
