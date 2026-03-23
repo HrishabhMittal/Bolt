@@ -6,7 +6,7 @@ int main(int argc, char **argv) {
     Lexer l(argv[1]);
     Parser p(l);
     auto program = p.parseProgram();
-    program->print();
+    // program->print();
     Emitter e(std::move(program));
     e.emitcode(argv[2]);
     return 0;

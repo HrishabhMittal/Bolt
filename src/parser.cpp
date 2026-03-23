@@ -227,8 +227,8 @@ class Parser {
                                  tokenToString(currentToken));
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {
-        std::cout << "parsing proto: " << std::endl;
-        std::cout << tokenToString(currentToken) << std::endl;
+        // std::cout << "parsing proto: " << std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         std::vector<std::pair<Token, Token>> args;
         if (!match(TokenType::PUNCTUATOR, ")")) {
             while (true) {

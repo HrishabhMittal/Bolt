@@ -113,7 +113,7 @@ class Lexer {
     }
     Token gettoken() {
         Token t = _gettoken();
-        std::cout << t << std::endl;
+        // std::cout << t << std::endl;
         return t;
     }
     Token _gettoken() {

@@ -23,6 +23,7 @@ struct Function {
     std::string ret_type;
 };
 class Program {
+    uint64_t main_ip = UINT64_MAX;
     uint64_t iden_stack_size = 0;
     std::vector<bvm::instruction> code;
     std::map<std::string, std::vector<uint64_t>> identifier_map;
@@ -37,6 +38,8 @@ class Program {
         scope.push_back({});
         func_scope.push_back({});
     }
+    const std::vector<bvm::instruction> &Code() { return code; }
+    uint64_t main() { return main_ip; }
     size_t get_ip() { return code.size(); }
     void push(const bvm::instruction &i) { code.push_back(i); }
     uint64_t size() { return code.size(); }
@@ -58,6 +61,14 @@ class Program {
             if (i.name == j.name)
                 throw std::runtime_error("redaclaration of " + i.name +
                                          " in the same scope.");
+        }
+        if (i.name == "main") {
+            if (func_scope.size() != 1)
+                throw std::runtime_error(
+                    "main was not declared in global scope");
+            else {
+                main_ip = i.ip;
+            }
         }
         func_scope.back().push_back(i);
     }
