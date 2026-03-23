@@ -1,17 +1,11 @@
 #!/bin/bash
 echo ------------ MAKING COMPILER -----------------
 make
-echo ------------ COMPILING PROGRAM -----------------
-./boltc examples/main.bolt a.asm
-nasm -f elf64 a.asm -o main.o
-ld main.o -o main
-echo ------------ RUNNNING PROGRAM -----------------
-./main
-echo exitcode $?
-echo ------------ CLEANUP -----------------
-if [[ "$1" == "keep" ]]; then
-    mv a.asm assembly
-else
-    rm a.asm
-fi
-rm main.o main
+echo ------------ MAKING VM "&" UTILS -------------
+cd bvm
+make -B
+cd ..
+echo ------------ RUNNING ON EXAMPLE --------------
+./build/boltc examples/main.bolt main
+./bvm/build/objdump main
+./bvm/build/bvm main
