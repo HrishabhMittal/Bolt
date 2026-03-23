@@ -4,12 +4,13 @@
 #include <fstream>
 #include <memory>
 #include <utility>
+
 class Emitter {
-    std::unique_ptr<ProgramAST> program;
-    std::vector<bvm::instruction> code;
+    std::unique_ptr<ProgramAST> programAST;
+    Program program;
 
   public:
-    Emitter(Parser &p) : program(std::move(p.parseProgram())) {}
-    Emitter(std::unique_ptr<ProgramAST> prog) : program(std::move(prog)) {}
-    void emitcode(std::string filename) { program->codegen(code); }
+    Emitter(Parser &p) : programAST(std::move(p.parseProgram())) {}
+    Emitter(std::unique_ptr<ProgramAST> prog) : programAST(std::move(prog)) {}
+    void emitcode(std::string filename) { programAST->codegen(program); }
 };

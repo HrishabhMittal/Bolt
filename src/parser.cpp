@@ -1,5 +1,7 @@
 #include "codegen.cpp"
 #include <iostream>
+#include <string>
+
 class Parser {
     Lexer l;
     Token currentToken;
