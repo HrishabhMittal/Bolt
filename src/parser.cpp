@@ -193,9 +193,9 @@ class Parser {
         if (insideFunction&&match(TokenType::KEYWORD, "return")) return parseReturn();
         if (insideLoop&&match(TokenType::KEYWORD, "break")||match(TokenType::KEYWORD, "continue")) return parseBreakContinue();
         if (match(TokenType::IDENTIFIER)&&(matchnext(TokenType::PUNCTUATOR,":=")||matchnext(TokenType::PUNCTUATOR,"="))) return parseDeclarationAssignment();
-        auto x = parseExpr();
-        expect(TokenType::PUNCTUATOR,";");
-        return std::move(x);
+        // auto x = parseExpr();
+        // expect(TokenType::PUNCTUATOR,";");
+        // return std::move(x);
         throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {

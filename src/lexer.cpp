@@ -8,8 +8,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
 Value valuetype(const std::string &s) {
-    std::cout<<"calc for: "<<s<<std::endl;
+    // std::cout<<"calc for: "<<s<<std::endl;
     if (s.front() == '"') return STRING;
     if (s == "true" || s == "false") return BOOL;
     if (std::isdigit(s.front())) {
@@ -21,6 +22,60 @@ Value valuetype(const std::string &s) {
         return INT;
     }
     throw std::runtime_error("Unrecognised literal: " + s);
+}
+double valueToDouble(const std::string& s) {
+    double out = 0.0;
+    double divisor = 1.0;
+    bool afterDecimal = false;
+    bool negative = false;
+    size_t i = 0;
+    if (i < s.length() && s[i] == '-') {
+        negative = true;
+        i++;
+    } else if (i < s.length() && s[i] == '+') {
+        i++;
+    }
+    for (; i < s.length(); ++i) {
+        char c = s[i];
+        if (c == '.') {
+            afterDecimal = true;
+            continue;
+        }
+        if (std::isdigit(c)) {
+            out = out * 10.0 + (c - '0');
+            if (afterDecimal) divisor *= 10.0;
+        } else if (c == 'e' || c == 'E') {
+            i++;
+            break;
+        } else {
+            break; 
+        }
+    }
+
+    double result = out / divisor;
+    if (i < s.length()) {
+        bool expNegative = false;
+        if (s[i] == '-') {
+            expNegative = true;
+            i++;
+        } else if (s[i] == '+') {
+            i++;
+        }
+
+        int exponent = 0;
+        while (i < s.length() && std::isdigit(s[i])) {
+            exponent = exponent * 10 + (s[i] - '0');
+            i++;
+        }
+
+        double p10 = 1.0;
+        for (int j = 0; j < exponent; ++j) p10 *= 10.0;
+
+        if (expNegative) result /= p10;
+        else result *= p10;
+    }
+
+    return negative ? -result : result;
 }
 bool ispresentin(char c, const std::string& s) {
     for (char i : s) if (c == i) return true;

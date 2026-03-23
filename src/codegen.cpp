@@ -1,4 +1,9 @@
+#include <bvm.hpp>
 #include "codeutil.cpp"
+#include "header.hpp"
+#include "opcode.hpp"
+#include "vm.hpp"
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,7 +15,7 @@
 class StatementAST {
 public:
     virtual void print(int indent=0)=0;
-    virtual void codegen()=0;
+    virtual void codegen(std::vector<bvm::instruction>& code)=0;
     virtual ~StatementAST()=default;
 };
 
@@ -18,10 +23,11 @@ void printSpace(int space) {
     for (int i=0;i<space;i++) std::cout<<' ';
 } 
 
-class ExprAST: public StatementAST {
+class ExprAST {
 public:
-    virtual void codegen() override {
-    }
+    virtual void print(int indent=0)=0;
+    virtual std::string codegen(std::vector<bvm::instruction>& code)=0;
+    virtual ~ExprAST()=default;
 };
 
 class BinaryExprAST : public ExprAST {
@@ -30,7 +36,6 @@ public:
     Token op;
     std::unique_ptr<ExprAST> rhs;
     BinaryExprAST(std::unique_ptr<ExprAST> l,Token o,std::unique_ptr<ExprAST> r): lhs(std::move(l)),op(o),rhs(std::move(r)) {}
-
     virtual void print(int indent=0) override {
         printSpace(indent);
         indent+=2;
@@ -40,7 +45,34 @@ public:
         lhs->print(indent);
         rhs->print(indent);
     }
-
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        auto retval1=lhs->codegen(code);
+        auto retval2=rhs->codegen(code);
+        if (retval1!=retval2) {
+            throw std::runtime_error("comparing \""+retval1+"\" and \""+retval2+'"');
+        }
+        if (retval1=="f32") {
+            code.push_back({bvm::OPCODE::F32_CMP,{}});
+        } else if (retval1=="f64") {
+            code.push_back({bvm::OPCODE::F64_CMP,{}});
+        } else {
+            code.push_back({bvm::OPCODE::U64_CMP,{}});
+        }
+        if (op=="==") {
+            code.push_back({bvm::OPCODE::PE});
+        } else if (op=="!=") {
+            code.push_back({bvm::OPCODE::PNE});
+        } else if (op=="<") {
+            code.push_back({bvm::OPCODE::PLT});
+        } else if (op==">") {
+            code.push_back({bvm::OPCODE::PGT});
+        } else if (op=="<=") {
+            code.push_back({bvm::OPCODE::PLE});
+        } else if (op==">=") {
+            code.push_back({bvm::OPCODE::PGE});
+        }
+        return "bool";
+    }
 };
 
 class UnaryExprAST : public ExprAST {
@@ -56,18 +88,47 @@ public:
         std::cout<<"op: "<<(op)<<std::endl;
         operand->print(indent);
     }
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        auto retval=operand->codegen(code);
+        if (op=="-") {
+            if (retval[0]=='u') throw std::runtime_error("can't use negation operator on unsigned types");
+            if (retval=="f32") {
+                code.push_back({bvm::OPCODE::F32_NEGATE,{}});
+            } else if (retval=="f64") {
+                code.push_back({bvm::OPCODE::F64_NEGATE,{}});
+            } else if (retval=="i32") {
+                code.push_back({bvm::OPCODE::I32_NEGATE, {}});
+            } else {
+                code.push_back({bvm::OPCODE::I64_NEGATE, {}});
+            }
+        } else if (op=="+") {
+            // do nothing???
+        }
+        return retval;
+    }
 };
 
 class BooleanExprAST : public ExprAST {
 public:
     Token boolean;
-    BooleanExprAST(Token b):boolean(b){}
+    BooleanExprAST(Token b):boolean(b) {}
     virtual void print(int indent=0) override {
         printSpace(indent);
         std::cout<<"BooleanExprAST: "<<std::endl;
         indent+=2;
         printSpace(indent);
         std::cout<<"bool: "<<(boolean)<<std::endl;
+    }
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        bvm::Value v;
+        if (boolean=="false") {
+            code.push_back({bvm::OPCODE::PUSH,{0}});
+        } else if (boolean=="true") {
+            code.push_back({bvm::OPCODE::PUSH,{1}});
+        } else {
+            throw std::runtime_error("boolean value not equal to true or false");
+        }
+        return "bool";
     }
 };
 
@@ -82,6 +143,36 @@ public:
         printSpace(indent);
         std::cout<<"bool: "<<(number)<<std::endl;
     }
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        bvm::Value v;
+        Value vt=valuetype(number.value);
+        // todo
+        if (vt==DOUBLE) {
+            // double d=valueToDouble(number.value);
+            union {
+                double f;
+                uint64_t u;
+            } some;
+            some.u=0;
+            some.f=std::stold(number.value);
+            code.push_back({bvm::OPCODE::PUSH,{some.u}});
+            return "f64";
+        } else if (vt==INT) {
+            uint64_t n=std::stoull(number.value);
+            code.push_back({bvm::OPCODE::PUSH,{n}});
+            return "i32";
+        } else if (vt==FLOAT) {
+            union {
+                float f;
+                uint64_t u;
+            } some;
+            some.u=0;
+            some.f=static_cast<float>(std::stold(number.value));
+            code.push_back({bvm::OPCODE::PUSH,{some.u}});
+            return "f32";
+        }
+        throw std::runtime_error("couldn't resolve number literal "+number.value);
+    }
 };
 
 class StringExprAST : public ExprAST {
@@ -95,6 +186,9 @@ public:
         printSpace(indent);
         std::cout<<"bool: "<<str<<std::endl;
     }
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        throw std::runtime_error("string support not implemented");
+    }
 };
 
 class IdentifierExprAST : public ExprAST {
@@ -107,6 +201,11 @@ public:
         indent+=2;
         printSpace(indent);
         std::cout<<"identifier: "<<(identifier)<<std::endl;
+    }
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        // need to keep track of identifiers and implement this fully
+        code.push_back({bvm::OPCODE::LOAD,{}});
+        return "idk man";
     }
 };
 
@@ -125,6 +224,16 @@ public:
             i->print(indent);
         }
     }
+    virtual std::string codegen(std::vector<bvm::instruction>& code) override {
+        for (auto&& i:args) {
+            i->codegen(code);
+        }
+        // need to fix this too
+        code.push_back({bvm::OPCODE::CALL,{}});
+
+        // ans this
+        return "idk man";
+    }
 };
 
 class DeclarationAST : public StatementAST {
@@ -140,7 +249,9 @@ public:
         std::cout<<"callee: "<<identifier<<std::endl;
         expr->print(indent);
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        // todo
+        throw std::runtime_error("to implement declaration");
     }
 };
 
@@ -157,7 +268,8 @@ public:
         std::cout<<"callee: "<<identifier<<std::endl;
         expr->print(indent);
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        throw std::runtime_error("to implement assignment");
     }
 };
 
@@ -174,7 +286,10 @@ public:
             std::cout<<i.first<<" "<<i.second<<std::endl;
         }
     }
-    virtual void codegen() override {}
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        // never called
+        throw std::runtime_error("to implement after adding identifier stuff");
+    }
 };
 
 class BlockAST : public StatementAST {
@@ -193,7 +308,8 @@ public:
             i->print(indent);
         }
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        // to see if i have to leave this empty or not
     }
 };
 
@@ -216,7 +332,9 @@ public:
         proto->print(indent);
         body->print(indent);
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        proto->codegen(code);
+        body->codegen(code);
     }
 };
 class ConditionalAST : public StatementAST {
@@ -250,7 +368,7 @@ public:
             elseBlock->print(indent+2);
         }
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
     }
 };
 class WhileAST : public StatementAST {
@@ -269,7 +387,7 @@ public:
         std::cout<<"Body: "<<std::endl;
         body->print(indent+2);
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
     }
 };
 
@@ -298,7 +416,7 @@ public:
         std::cout<<"Body: "<<std::endl;
         body->print(indent+2);
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
     }
 };
 
@@ -312,7 +430,9 @@ public:
         indent+=2;
         if (expr) expr->print(indent);
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        expr->codegen(code);
+        code.push_back({bvm::OPCODE::RET,{}});
     }
 };
 
@@ -327,7 +447,8 @@ public:
         printSpace(indent);
         std::cout<<"keyword: "<<keyword<<std::endl;
     }
-    virtual void codegen() override {
+    virtual void codegen(std::vector<bvm::instruction>& code) override {
+        throw std::runtime_error("break/continue not implemented");
     }
 };
 
@@ -346,7 +467,7 @@ public:
             i->print(indent);
         }
     }
-    void codegen() {
-        for (auto&& i:statements) i->codegen();
+    void codegen(std::vector<bvm::instruction>& code) {
+        for (auto&& i:statements) i->codegen(code);
     }
 };

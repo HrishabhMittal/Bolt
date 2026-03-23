@@ -47,8 +47,14 @@ struct Token {
     int64_t startindex;
     const std::string* line;
 
+    // maybe i have to remove this if i run into problems later
+    bool operator==(const char* c) {
+        return c==value;
+    }
 };
-
+inline bool operator==(const Token& t1,const Token& t2) {
+    return t1.ttype==t2.ttype && t1.value == t2.value;
+}
 inline std::string tokenToString(const Token& tok) {
     std::string typeStr;
     switch (tok.ttype) {
