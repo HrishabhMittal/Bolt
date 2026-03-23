@@ -1,25 +1,100 @@
 #include "codeutil.cpp"
 #include "header.hpp"
+#include "opcode.hpp"
 #include "vm.hpp"
+#include <algorithm>
 #include <bvm.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <map>
 #include <memory>
-#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 struct Identifier {
     std::string name;
     std::string type;
 };
-struct Program {
+struct Function {
+    uint64_t ip;
+    std::string name;
+    std::string ret_type;
+};
+class Program {
+    uint64_t iden_stack_size = 0;
     std::vector<bvm::instruction> code;
     std::map<std::string, std::vector<uint64_t>> identifier_map;
     std::vector<std::vector<Identifier>> scope;
+    std::vector<std::vector<Function>> func_scope;
+
+  public:
+    Program() {
+        code.reserve(1024);
+        scope.reserve(16);
+        func_scope.reserve(16);
+        scope.push_back({});
+        func_scope.push_back({});
+    }
+    size_t get_ip() { return code.size(); }
+    void push(const bvm::instruction &i) { code.push_back(i); }
+    uint64_t size() { return code.size(); }
+    bvm::instruction &operator[](size_t ind) { return code[ind]; }
+    void new_scope() {
+        func_scope.push_back({});
+        scope.push_back({});
+    }
+    void delete_scope() {
+        for (auto i : scope.back()) {
+            identifier_map[i.name].pop_back();
+            iden_stack_size--;
+        }
+        func_scope.pop_back();
+        scope.pop_back();
+    }
+    void declare_function(Function i) {
+        for (auto j : func_scope.back()) {
+            if (i.name == j.name)
+                throw std::runtime_error("redaclaration of " + i.name +
+                                         " in the same scope.");
+        }
+        func_scope.back().push_back(i);
+    }
+    Function get_function(std::string name) {
+        for (size_t i = func_scope.size() - 1; i >= 0; i--) {
+            for (size_t j = 0; j < func_scope[i].size(); j++) {
+                if (func_scope[i][j].name == name)
+                    return func_scope[i][j];
+            }
+        }
+        throw std::runtime_error("no declaration found for function " + name);
+    }
+    uint64_t declare(Identifier i) {
+        for (auto j : scope.back()) {
+            if (i.name == j.name)
+                throw std::runtime_error("redaclaration of " + i.name +
+                                         " in the same scope.");
+        }
+        scope.back().push_back(i);
+        identifier_map[i.name].push_back(iden_stack_size);
+        return iden_stack_size++;
+    }
+    uint64_t getaddress(std::string i) {
+        if (identifier_map.count(i) && identifier_map[i].size() > 0)
+            return identifier_map[i].back();
+        else
+            throw std::runtime_error("identifier " + i + " doesn't exist.");
+    }
+    std::string gettype(std::string iden) {
+        for (size_t i = scope.size() - 1; i >= 0; i--) {
+            for (size_t j = 0; j < scope.size(); j++) {
+                if (scope[i][j].name == iden)
+                    return scope[i][j].type;
+            }
+        }
+        throw std::runtime_error("identifier " + iden + " doesn't exist.");
+    }
 };
 
 class AST {
@@ -64,21 +139,31 @@ class BinaryExprAST : public ExprAST {
         rhs->print(indent);
     }
     virtual std::string evaltype() override {
-        static std::string retval = "";
-        if (retval != "")
-            return retval;
         auto ltype = lhs->evaltype();
         auto rtype = rhs->evaltype();
         if (ltype != rtype) {
-            throw std::runtime_error("Type mismatch in BinaryExprAST");
+            throw std::runtime_error(
+                "Type mismatch in expression: cannot operate on \"" + ltype +
+                "\" and \"" + rtype + "\"");
         }
         if (op.value == "==" || op.value == "!=" || op.value == "<" ||
             op.value == ">" || op.value == "<=" || op.value == ">=") {
-            retval = "bool";
             return "bool";
         }
-        retval = ltype;
-        return ltype;
+        if (op.value == "%") {
+            if (ltype != "i32" && ltype != "i64") {
+                throw std::runtime_error("Type error: Modulo operator '%' not "
+                                         "supported for type \"" +
+                                         ltype + "\"");
+            }
+            return ltype;
+        }
+        if (op.value == "+" || op.value == "-" || op.value == "*" ||
+            op.value == "/") {
+            return ltype;
+        }
+        throw std::runtime_error("Type error: Unsupported binary operator \"" +
+                                 op.value + "\"");
     }
     virtual void codegen(Program &program) override {
         lhs->codegen(program);
@@ -89,82 +174,79 @@ class BinaryExprAST : public ExprAST {
             throw std::runtime_error("operation on \"" + retval1 + "\" and \"" +
                                      retval2 + "\" is not supported");
         }
-
         std::string t = retval1;
-
         if (op.value == "+") {
             if (t == "i32")
-                program.code.push_back({bvm::OPCODE::I32_ADD, {}});
+                program.push({bvm::OPCODE::I32_ADD, {}});
             else if (t == "i64")
-                program.code.push_back({bvm::OPCODE::I64_ADD, {}});
+                program.push({bvm::OPCODE::I64_ADD, {}});
             else if (t == "f32")
-                program.code.push_back({bvm::OPCODE::F32_ADD, {}});
+                program.push({bvm::OPCODE::F32_ADD, {}});
             else if (t == "f64")
-                program.code.push_back({bvm::OPCODE::F64_ADD, {}});
+                program.push({bvm::OPCODE::F64_ADD, {}});
         } else if (op.value == "-") {
             if (t == "i32")
-                program.code.push_back({bvm::OPCODE::I32_SUB, {}});
+                program.push({bvm::OPCODE::I32_SUB, {}});
             else if (t == "i64")
-                program.code.push_back({bvm::OPCODE::I64_SUB, {}});
+                program.push({bvm::OPCODE::I64_SUB, {}});
             else if (t == "f32")
-                program.code.push_back({bvm::OPCODE::F32_SUB, {}});
+                program.push({bvm::OPCODE::F32_SUB, {}});
             else if (t == "f64")
-                program.code.push_back({bvm::OPCODE::F64_SUB, {}});
+                program.push({bvm::OPCODE::F64_SUB, {}});
         } else if (op.value == "*") {
             if (t == "i32")
-                program.code.push_back({bvm::OPCODE::I32_MULT, {}});
+                program.push({bvm::OPCODE::I32_MULT, {}});
             else if (t == "i64")
-                program.code.push_back({bvm::OPCODE::I64_MULT, {}});
+                program.push({bvm::OPCODE::I64_MULT, {}});
             else if (t == "f32")
-                program.code.push_back({bvm::OPCODE::F32_MULT, {}});
+                program.push({bvm::OPCODE::F32_MULT, {}});
             else if (t == "f64")
-                program.code.push_back({bvm::OPCODE::F64_MULT, {}});
+                program.push({bvm::OPCODE::F64_MULT, {}});
         } else if (op.value == "/") {
             if (t == "i32")
-                program.code.push_back({bvm::OPCODE::I32_DIV, {}});
+                program.push({bvm::OPCODE::I32_DIV, {}});
             else if (t == "i64")
-                program.code.push_back({bvm::OPCODE::I64_DIV, {}});
+                program.push({bvm::OPCODE::I64_DIV, {}});
             else if (t == "f32")
-                program.code.push_back({bvm::OPCODE::F32_DIV, {}});
+                program.push({bvm::OPCODE::F32_DIV, {}});
             else if (t == "f64")
-                program.code.push_back({bvm::OPCODE::F64_DIV, {}});
+                program.push({bvm::OPCODE::F64_DIV, {}});
         } else if (op.value == "%") {
             if (t == "i32")
-                program.code.push_back({bvm::OPCODE::I32_MOD, {}});
+                program.push({bvm::OPCODE::I32_MOD, {}});
             else if (t == "i64")
-                program.code.push_back({bvm::OPCODE::I64_MOD, {}});
+                program.push({bvm::OPCODE::I64_MOD, {}});
             else
                 throw std::runtime_error(
                     "Modulo operator not supported for floating points");
         }
 
         if (t == "f32")
-            program.code.push_back({bvm::OPCODE::F32_CMP, {}});
+            program.push({bvm::OPCODE::F32_CMP, {}});
         else if (t == "f64")
-            program.code.push_back({bvm::OPCODE::F64_CMP, {}});
+            program.push({bvm::OPCODE::F64_CMP, {}});
         else if (t == "i32")
-            program.code.push_back({bvm::OPCODE::I32_CMP, {}});
+            program.push({bvm::OPCODE::I32_CMP, {}});
         else
-            program.code.push_back({bvm::OPCODE::I64_CMP, {}});
+            program.push({bvm::OPCODE::I64_CMP, {}});
 
         if (op.value == "==")
-            program.code.push_back({bvm::OPCODE::PE, {}});
+            program.push({bvm::OPCODE::PE, {}});
         else if (op.value == "!=")
-            program.code.push_back({bvm::OPCODE::PNE, {}});
+            program.push({bvm::OPCODE::PNE, {}});
         else if (op.value == "<")
-            program.code.push_back({bvm::OPCODE::PLT, {}});
+            program.push({bvm::OPCODE::PLT, {}});
         else if (op.value == ">")
-            program.code.push_back({bvm::OPCODE::PGT, {}});
+            program.push({bvm::OPCODE::PGT, {}});
         else if (op.value == "<=")
-            program.code.push_back({bvm::OPCODE::PLE, {}});
+            program.push({bvm::OPCODE::PLE, {}});
         else if (op.value == ">=")
-            program.code.push_back({bvm::OPCODE::PGE, {}});
+            program.push({bvm::OPCODE::PGE, {}});
         else
             throw std::runtime_error("Unsupported binary operator: " +
                                      op.value);
     }
 };
-
 class UnaryExprAST : public ExprAST {
   public:
     Token op;
@@ -191,13 +273,13 @@ class UnaryExprAST : public ExprAST {
                 throw std::runtime_error(
                     "can't use negation operator on unsigned types");
             if (retval == "f32") {
-                program.code.push_back({bvm::OPCODE::F32_NEGATE, {}});
+                program.push({bvm::OPCODE::F32_NEGATE, {}});
             } else if (retval == "f64") {
-                program.code.push_back({bvm::OPCODE::F64_NEGATE, {}});
+                program.push({bvm::OPCODE::F64_NEGATE, {}});
             } else if (retval == "i32") {
-                program.code.push_back({bvm::OPCODE::I32_NEGATE, {}});
+                program.push({bvm::OPCODE::I32_NEGATE, {}});
             } else {
-                program.code.push_back({bvm::OPCODE::I64_NEGATE, {}});
+                program.push({bvm::OPCODE::I64_NEGATE, {}});
             }
         } else if (op == "+") {
             // do nothing???
@@ -220,16 +302,15 @@ class BooleanExprAST : public ExprAST {
     virtual void codegen(Program &program) override {
         bvm::Value v;
         if (boolean == "false") {
-            program.code.push_back({bvm::OPCODE::PUSH, {0}});
+            program.push({bvm::OPCODE::PUSH, {0}});
         } else if (boolean == "true") {
-            program.code.push_back({bvm::OPCODE::PUSH, {1}});
+            program.push({bvm::OPCODE::PUSH, {1}});
         } else {
             throw std::runtime_error(
                 "boolean value not equal to true or false");
         }
     }
 };
-
 class NumberExprAST : public ExprAST {
   public:
     Token number;
@@ -264,10 +345,10 @@ class NumberExprAST : public ExprAST {
             } some;
             some.u = 0;
             some.f = std::stold(number.value);
-            program.code.push_back({bvm::OPCODE::PUSH, {some.u}});
+            program.push({bvm::OPCODE::PUSH, {some.u}});
         } else if (vt == INT) {
             uint64_t n = std::stoull(number.value);
-            program.code.push_back({bvm::OPCODE::PUSH, {n}});
+            program.push({bvm::OPCODE::PUSH, {n}});
         } else if (vt == FLOAT) {
             union {
                 float f;
@@ -275,7 +356,7 @@ class NumberExprAST : public ExprAST {
             } some;
             some.u = 0;
             some.f = static_cast<float>(std::stold(number.value));
-            program.code.push_back({bvm::OPCODE::PUSH, {some.u}});
+            program.push({bvm::OPCODE::PUSH, {some.u}});
         }
         throw std::runtime_error("couldn't resolve number literal " +
                                  number.value);
@@ -312,9 +393,8 @@ class IdentifierExprAST : public ExprAST {
     }
     virtual std::string evaltype() override { return ""; }
     virtual void codegen(Program &program) override {
-        // need to keep track of identifiers and implement this fully
-        throw std::runtime_error("todo");
-        program.code.push_back({bvm::OPCODE::LOAD, {}});
+        uint64_t ind = program.getaddress(identifier.value);
+        program.push({bvm::OPCODE::LOAD, {ind}});
     }
 };
 
@@ -334,15 +414,15 @@ class CallExprAST : public ExprAST {
             i->print(indent);
         }
     }
-    virtual std::string evaltype() override { return ""; }
+    virtual std::string evaltype() override {
+        throw std::runtime_error("todo");
+    }
     virtual void codegen(Program &program) override {
         for (auto &&i : args) {
             i->codegen(program);
         }
-        // need to fix this too
-        program.code.push_back({bvm::OPCODE::CALL, {}});
-
-        // ans this
+        uint64_t ind = program.getaddress(callee.value);
+        program.push({bvm::OPCODE::CALL, {ind}});
     }
 };
 
@@ -361,8 +441,10 @@ class DeclarationAST : public StatementAST {
         expr->print(indent);
     }
     virtual void codegen(Program &program) override {
-        // todo
-        throw std::runtime_error("to implement declaration");
+        auto type = expr->evaltype();
+        Identifier i = {identifier.value, type};
+        expr->codegen(program);
+        program.push({bvm::OPCODE::STORE, {program.declare(i)}});
     }
 };
 
@@ -381,7 +463,16 @@ class AssignmentAST : public StatementAST {
         expr->print(indent);
     }
     virtual void codegen(Program &program) override {
-        throw std::runtime_error("to implement assignment");
+        auto type = expr->evaltype();
+        auto iden_type = program.gettype(identifier.value);
+        if (type != iden_type) {
+            throw std::runtime_error("attempt to assign " + type + " to " +
+                                     identifier.value + " of type " +
+                                     iden_type + " failed.");
+        }
+        expr->codegen(program);
+        program.push(
+            {bvm::OPCODE::STORE, {program.getaddress(identifier.value)}});
     }
 };
 
@@ -399,8 +490,10 @@ class PrototypeAST : public StatementAST {
         }
     }
     virtual void codegen(Program &program) override {
-        // never called
-        throw std::runtime_error("to implement after adding identifier stuff");
+        for (size_t i = args.size() - 1; i >= 0; i--) {
+            Identifier iden{args[i].first.value, args[i].second.value};
+            program.push({bvm::OPCODE::STORE, program.declare(iden)});
+        }
     }
 };
 
@@ -423,6 +516,23 @@ class BlockAST : public StatementAST {
     }
     virtual void codegen(Program &program) override {
         // to see if i have to leave this empty or not
+        //
+        // NOTE TO FUTURE ME:
+        // im thinking i might run into problems with PrototypeAST pushing
+        // defining new args if i make proto push to a scope and i make block
+        // also push to a scope block will be able to overshadow variables i
+        // shouldn't be able to? so yea, BlockAST will be called with a
+        // different overload
+        // If you think of a soln then remove ts
+        throw std::runtime_error("this method is not meant to be called");
+    }
+    void codegen(Program &program, bool push_scope) {
+        if (push_scope)
+            program.new_scope();
+        for (auto &&i : statements)
+            i->codegen(program);
+        if (push_scope)
+            program.delete_scope();
     }
 };
 
@@ -447,8 +557,14 @@ class FunctionAST : public StatementAST {
         body->print(indent);
     }
     virtual void codegen(Program &program) override {
+        const bool push_scope = false;
+        uint64_t ip = program.get_ip() + 1;
+        Function func{ip, name.value, returnType.value};
+        program.declare_function(func);
+        program.new_scope();
         proto->codegen(program);
-        body->codegen(program);
+        body->codegen(program, push_scope);
+        program.delete_scope();
     }
 };
 class ConditionalAST : public StatementAST {
@@ -484,7 +600,28 @@ class ConditionalAST : public StatementAST {
             elseBlock->print(indent + 2);
         }
     }
-    virtual void codegen(Program &program) override {}
+    virtual void codegen(Program &program) override {
+        const bool push_scope = true;
+        ifCondition->codegen(program);
+        if (ifCondition->evaltype() != "bool")
+            throw std::runtime_error("cannot evaluate expression to type bool");
+        size_t jnc = program.size();
+        program.push({bvm::OPCODE::JNC, {}});
+        ifBlock->codegen(program, push_scope);
+        program[jnc].operands[0] = program.size();
+        for (auto &&i : elseIfs) {
+            if (i.first->evaltype() != "bool")
+                throw std::runtime_error(
+                    "cannot evaluate expression to type bool");
+            i.first->codegen(program);
+            jnc = program.size();
+            program.push({bvm::OPCODE::JNC, {}});
+            i.second->codegen(program, push_scope);
+            program[jnc].operands[0] = program.size();
+        }
+        if (elseBlock != nullptr)
+            elseBlock->codegen(program);
+    }
 };
 class WhileAST : public StatementAST {
   public:
@@ -503,7 +640,18 @@ class WhileAST : public StatementAST {
         std::cout << "Body: " << std::endl;
         body->print(indent + 2);
     }
-    virtual void codegen(Program &program) override {}
+    virtual void codegen(Program &program) override {
+        const bool push_scope = true;
+        size_t while_start = program.size();
+        if (condition->evaltype() != "bool")
+            throw std::runtime_error("cannot evaluate expression to type bool");
+        condition->codegen(program);
+        size_t jnc = program.size();
+        program.push({bvm::OPCODE::JNC, {}});
+        body->codegen(program, push_scope);
+        program.push({bvm::OPCODE::JMP, while_start});
+        program[jnc].operands[0] = program.size();
+    }
 };
 
 class ForAST : public StatementAST {
@@ -534,7 +682,22 @@ class ForAST : public StatementAST {
         std::cout << "Body: " << std::endl;
         body->print(indent + 2);
     }
-    virtual void codegen(Program &program) override {}
+    virtual void codegen(Program &program) override {
+        const bool push_scope = false;
+        program.new_scope();
+        init->codegen(program);
+        size_t for_start = program.size();
+        if (condition->evaltype() != "bool")
+            throw std::runtime_error("cannot evaluate expression to type bool");
+        condition->codegen(program);
+        size_t jnc = program.size();
+        program.push({bvm::OPCODE::JNC, {}});
+        body->codegen(program, push_scope);
+        update->codegen(program);
+        program.push({bvm::OPCODE::JMP, for_start});
+        program.delete_scope();
+        program[jnc].operands[0] = program.size();
+    }
 };
 
 class ReturnAST : public StatementAST {
@@ -550,7 +713,7 @@ class ReturnAST : public StatementAST {
     }
     virtual void codegen(Program &program) override {
         expr->codegen(program);
-        program.code.push_back({bvm::OPCODE::RET, {}});
+        program.push({bvm::OPCODE::RET, {}});
     }
 };
 
@@ -569,7 +732,6 @@ class BreakContinueAST : public StatementAST {
         throw std::runtime_error("break/continue not implemented");
     }
 };
-
 class ProgramAST : AST {
   public:
     std::vector<std::unique_ptr<StatementAST>> statements;

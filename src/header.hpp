@@ -35,7 +35,6 @@ struct Token {
     int64_t lineno;
     int64_t startindex;
     const std::string *line;
-
     // maybe i have to remove this if i run into problems later
     bool operator==(const char *c) { return c == value; }
 };
