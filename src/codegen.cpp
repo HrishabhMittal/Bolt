@@ -662,7 +662,7 @@ class ConditionalAST : public StatementAST {
             program.push({bvm::OPCODE::JMP, {}});
         }
         if (elseBlock != nullptr)
-            elseBlock->codegen(program);
+            elseBlock->codegen(program, push_scope);
         for (auto i : end_jumps) {
             program[i].operands[0] = program.size();
         }
