@@ -2,7 +2,6 @@
 #include "header.hpp"
 #include "opcode.hpp"
 #include "vm.hpp"
-#include <algorithm>
 #include <bvm.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -111,10 +110,19 @@ class Program {
 };
 
 class AST {
+  public:
     virtual void print(int indent = 0) = 0;
     virtual void codegen(Program &program) = 0;
 };
-class StatementAST : AST {
+
+class GlobalStatementAST : public AST {
+  public:
+    virtual void print(int indent = 0) = 0;
+    virtual void codegen(Program &program) = 0;
+    virtual ~GlobalStatementAST() = default;
+};
+
+class StatementAST : public AST {
   public:
     virtual void print(int indent = 0) = 0;
     virtual void codegen(Program &program) = 0;
@@ -126,7 +134,7 @@ void printSpace(int space) {
         std::cout << ' ';
 }
 
-class ExprAST : AST {
+class ExprAST : public AST {
   public:
     virtual void print(int indent = 0) = 0;
     virtual void codegen(Program &program) = 0;
@@ -457,6 +465,27 @@ class CallExprAST : public ExprAST {
     }
 };
 
+class GlobalDeclarationAST : public GlobalStatementAST {
+  public:
+    Token identifier;
+    std::unique_ptr<ExprAST> expr;
+    GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e)
+        : identifier(id), expr(std::move(e)) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "GlobalDeclarationAST: " << std::endl;
+        indent += 2;
+        printSpace(indent);
+        std::cout << "identifier: " << identifier << std::endl;
+        expr->print(indent);
+    }
+    virtual void codegen(Program &program) override {
+        auto type = expr->evaltype(program);
+        Identifier i = {identifier.value, type};
+        expr->codegen(program);
+        program.push({bvm::OPCODE::STORE, {program.declare(i)}});
+    }
+};
 class DeclarationAST : public StatementAST {
   public:
     Token identifier;
@@ -468,7 +497,7 @@ class DeclarationAST : public StatementAST {
         std::cout << "DeclarationAST: " << std::endl;
         indent += 2;
         printSpace(indent);
-        std::cout << "callee: " << identifier << std::endl;
+        std::cout << "identifier: " << identifier << std::endl;
         expr->print(indent);
     }
     virtual void codegen(Program &program) override {
@@ -570,7 +599,7 @@ class BlockAST : public StatementAST {
     }
 };
 
-class FunctionAST : public StatementAST {
+class FunctionAST : public GlobalStatementAST {
   public:
     Token name;
     std::unique_ptr<PrototypeAST> proto;
@@ -660,8 +689,8 @@ class ConditionalAST : public StatementAST {
         }
         if (elseBlock != nullptr)
             elseBlock->codegen(program);
-        for (auto i:end_jumps) {
-            program[i].operands[0]=program.size();
+        for (auto i : end_jumps) {
+            program[i].operands[0] = program.size();
         }
     }
 };
@@ -775,11 +804,11 @@ class BreakContinueAST : public StatementAST {
         throw std::runtime_error("break/continue not implemented");
     }
 };
-class ProgramAST : AST {
+class ProgramAST : public AST {
   public:
-    std::vector<std::unique_ptr<StatementAST>> statements;
+    std::vector<std::unique_ptr<GlobalStatementAST>> statements;
     ProgramAST() = default;
-    void addStatement(std::unique_ptr<StatementAST> stmt) {
+    void addStatement(std::unique_ptr<GlobalStatementAST> stmt) {
         statements.push_back(std::move(stmt));
     }
     void print(int indent = 0) {

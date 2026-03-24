@@ -177,6 +177,21 @@ class Parser {
         expect(TokenType::PUNCTUATOR, "}");
         return block;
     }
+    std::unique_ptr<GlobalStatementAST> parseGlobalDeclaration() {
+
+        // std::cout<<tokenToString(currentToken)<<std::endl;
+        Token id = currentToken;
+        next();
+        if (match(TokenType::PUNCTUATOR, ":=")) {
+            next();
+            auto expr = parseExpr();
+            expect(TokenType::PUNCTUATOR, ";");
+
+            return std::make_unique<GlobalDeclarationAST>(id, std::move(expr));
+        }
+        throw std::runtime_error("Unknown statement at token: " +
+                                 tokenToString(currentToken));
+    }
     std::unique_ptr<StatementAST> parseDeclarationAssignment() {
         // std::cout<<"parsing dec/ass at: ";
 
@@ -198,11 +213,23 @@ class Parser {
         throw std::runtime_error("Unknown statement at token: " +
                                  tokenToString(currentToken));
     }
-    std::unique_ptr<StatementAST> parseStatement() {
+    std::unique_ptr<GlobalStatementAST> parseGlobalStatement() {
         // std::cout<<"parsing statment at: ";
         // std::cout<<tokenToString(currentToken)<<std::endl;
         if (match(TokenType::KEYWORD, "function"))
             return parseFunction();
+        if (match(TokenType::IDENTIFIER) &&
+            matchnext(TokenType::PUNCTUATOR, ":="))
+            return parseGlobalDeclaration();
+        // auto x = parseExpr();
+        // expect(TokenType::PUNCTUATOR,";");
+        // return std::move(x);
+        throw std::runtime_error("Unknown statement at token: " +
+                                 tokenToString(currentToken));
+    }
+    std::unique_ptr<StatementAST> parseStatement() {
+        // std::cout<<"parsing statment at: ";
+        // std::cout<<tokenToString(currentToken)<<std::endl;
         if (match(TokenType::PUNCTUATOR, "{"))
             return parseBlock();
         if (match(TokenType::KEYWORD, "if"))
@@ -319,7 +346,7 @@ class Parser {
         auto program = std::make_unique<ProgramAST>();
         next();
         while (currentToken.ttype != TokenType::TK_EOF) {
-            program->addStatement(parseStatement());
+            program->addStatement(parseGlobalStatement());
         }
         return program;
     }
