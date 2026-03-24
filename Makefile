@@ -1,3 +1,3 @@
 all:
 	mkdir -p build
-	g++ src/main.cpp -o build/boltc -g -Ibvm/include
+	g++ -std=c++23 src/main.cpp -o build/boltc -g -Ibvm/include

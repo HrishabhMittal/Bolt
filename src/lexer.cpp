@@ -18,9 +18,7 @@ Value valuetype(const std::string &s) {
     if (std::isdigit(s.front())) {
         if (s.back() == 'f' || s.back() == 'F')
             return FLOAT;
-        if (s.find('.') != std::string::npos ||
-            s.find('e') != std::string::npos ||
-            s.find('E') != std::string::npos)
+        if (s.find('.') != std::string::npos || s.find('e') != std::string::npos || s.find('E') != std::string::npos)
             return DOUBLE;
         return INT;
     }
@@ -119,8 +117,7 @@ class Lexer {
     Token _gettoken() {
         Token t = __gettoken();
         if (t.value == "#") {
-            while (t.ttype != TokenType::NEWLINE &&
-                   t.ttype != TokenType::TK_EOF) {
+            while (t.ttype != TokenType::NEWLINE && t.ttype != TokenType::TK_EOF) {
                 t = __gettoken();
             }
             return _gettoken();
@@ -147,8 +144,7 @@ class Lexer {
                 c = line_str[pos_char++];
             }
             if (c == '\n') {
-                return Token{TokenType::NEWLINE, "\n", pos_line + 1,
-                             pos_char - 1, &line_str};
+                return Token{TokenType::NEWLINE, "\n", pos_line + 1, pos_char - 1, &line_str};
             }
             if (pos_line >= (int64_t)data.size()) {
                 break;
@@ -158,8 +154,7 @@ class Lexer {
             if (std::isalpha(c) || c == '_') {
                 value += c;
                 while (pos_char < (int64_t)line_str.size() &&
-                       (std::isalnum(line_str[pos_char]) ||
-                        line_str[pos_char] == '_')) {
+                       (std::isalnum(line_str[pos_char]) || line_str[pos_char] == '_')) {
                     value += line_str[pos_char++];
                 }
                 return findtoken(value, pos_line + 1, startindex, &line_str);
@@ -168,14 +163,12 @@ class Lexer {
                 value += c;
                 bool dot = false;
                 while (pos_char < (int64_t)line_str.size() &&
-                       (std::isdigit(line_str[pos_char]) ||
-                        (line_str[pos_char] == '.' && !dot))) {
+                       (std::isdigit(line_str[pos_char]) || (line_str[pos_char] == '.' && !dot))) {
                     if (line_str[pos_char] == '.')
                         dot = true;
                     value += line_str[pos_char++];
                 }
-                if (pos_char < (int64_t)line_str.size() &&
-                    line_str[pos_char] == 'f')
+                if (pos_char < (int64_t)line_str.size() && line_str[pos_char] == 'f')
                     value += line_str[pos_char++];
                 return findtoken(value, pos_line + 1, startindex, &line_str);
             }
@@ -191,8 +184,7 @@ class Lexer {
             }
             if (ispresentin(c, symbols)) {
                 value += c;
-                while (pos_char < (int64_t)line_str.size() &&
-                       ispresentin(line_str[pos_char], symbols)) {
+                while (pos_char < (int64_t)line_str.size() && ispresentin(line_str[pos_char], symbols)) {
                     value += line_str[pos_char++];
                 }
                 return findtoken(value, pos_line + 1, startindex, &line_str);
@@ -204,16 +196,14 @@ class Lexer {
     }
 
   private:
-    Token findtoken(const std::string &s, int64_t line, int64_t index,
-                    const std::string *line_text) {
+    Token findtoken(const std::string &s, int64_t line, int64_t index, const std::string *line_text) {
         TokenType ttype;
         if (s.empty())
             return {TokenType::TK_EOF, "", line, index, line_text};
         if (std::isdigit(s[0])) {
             ttype = TokenType::NUMBER;
         } else if (std::isalpha(s[0]) || s[0] == '_') {
-            if (std::find(keywords.begin(), keywords.end(), s) !=
-                keywords.end()) {
+            if (std::find(keywords.begin(), keywords.end(), s) != keywords.end()) {
                 ttype = TokenType::KEYWORD;
             } else {
                 ttype = TokenType::IDENTIFIER;

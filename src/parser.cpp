@@ -17,8 +17,7 @@ class Parser {
         return x.ttype == type && (val.empty() || x.value == val);
     }
     bool match(TokenType type, const std::string &val = "") {
-        return currentToken.ttype == type &&
-               (val.empty() || currentToken.value == val);
+        return currentToken.ttype == type && (val.empty() || currentToken.value == val);
     }
     bool match_binop() {
         for (auto &i : binops_by_precedence)
@@ -30,12 +29,9 @@ class Parser {
     }
     Token expect(TokenType type, const std::string &val = "") {
         if (!match(type, val)) {
-            throw std::runtime_error(
-                "Unexpected token: \"" + currentToken.value +
-                "\", at line: " + std::to_string(currentToken.lineno) +
-                "\n    " + *currentToken.line + "\n    " +
-                repeat(" ", currentToken.startindex) +
-                repeat("^", currentToken.value.size()));
+            throw std::runtime_error("Unexpected token: \"" + currentToken.value + "\", at line: " +
+                                     std::to_string(currentToken.lineno) + "\n    " + *currentToken.line + "\n    " +
+                                     repeat(" ", currentToken.startindex) + repeat("^", currentToken.value.size()));
         }
         Token tok = currentToken;
         next();
@@ -71,8 +67,7 @@ class Parser {
     std::unique_ptr<ExprAST> parseValue() {
         // std::cout<<"parsing value at: ";
         // std::cout<<tokenToString(currentToken)<<std::endl;
-        if (match(TokenType::KEYWORD, "false") ||
-            match(TokenType::KEYWORD, "true"))
+        if (match(TokenType::KEYWORD, "false") || match(TokenType::KEYWORD, "true"))
             return std::make_unique<BooleanExprAST>(expect(TokenType::KEYWORD));
         if (match(TokenType::NUMBER))
             return std::make_unique<NumberExprAST>(expect(TokenType::NUMBER));
@@ -93,15 +88,13 @@ class Parser {
             }
             return std::make_unique<IdentifierExprAST>(id);
         }
-        throw std::runtime_error("Invalid value expression" +
-                                 tokenToString(currentToken));
+        throw std::runtime_error("Invalid value expression" + tokenToString(currentToken));
     }
 
     std::unique_ptr<ExprAST> parseTerm() {
         // std::cout<<"parsing term at: ";
         // std::cout<<tokenToString(currentToken)<<std::endl;
-        if (match(TokenType::PUNCTUATOR, "-") ||
-            match(TokenType::PUNCTUATOR, "!")) {
+        if (match(TokenType::PUNCTUATOR, "-") || match(TokenType::PUNCTUATOR, "!")) {
             Token op = currentToken;
             next();
             auto operand = parseTerm();
@@ -135,8 +128,7 @@ class Parser {
     }
 
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
-        auto lhs =
-            match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
+        auto lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
         while (true) {
             if (!match_binop()) {
                 return lhs;
@@ -150,8 +142,7 @@ class Parser {
             next();
             int nextPrec = (tokPrec == 1) ? tokPrec : tokPrec + 1;
             auto rhs = parseExpr(nextPrec);
-            lhs = std::make_unique<BinaryExprAST>(std::move(lhs), op,
-                                                  std::move(rhs));
+            lhs = std::make_unique<BinaryExprAST>(std::move(lhs), op, std::move(rhs));
         }
     }
     // std::unique_ptr<ExprAST> parseExpr() {
@@ -189,8 +180,7 @@ class Parser {
 
             return std::make_unique<GlobalDeclarationAST>(id, std::move(expr));
         }
-        throw std::runtime_error("Unknown statement at token: " +
-                                 tokenToString(currentToken));
+        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<StatementAST> parseDeclarationAssignment() {
         // std::cout<<"parsing dec/ass at: ";
@@ -210,22 +200,19 @@ class Parser {
             expect(TokenType::PUNCTUATOR, ";");
             return std::make_unique<AssignmentAST>(id, std::move(expr));
         }
-        throw std::runtime_error("Unknown statement at token: " +
-                                 tokenToString(currentToken));
+        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement() {
         // std::cout<<"parsing statment at: ";
         // std::cout<<tokenToString(currentToken)<<std::endl;
         if (match(TokenType::KEYWORD, "function"))
             return parseFunction();
-        if (match(TokenType::IDENTIFIER) &&
-            matchnext(TokenType::PUNCTUATOR, ":="))
+        if (match(TokenType::IDENTIFIER) && matchnext(TokenType::PUNCTUATOR, ":="))
             return parseGlobalDeclaration();
         // auto x = parseExpr();
         // expect(TokenType::PUNCTUATOR,";");
         // return std::move(x);
-        throw std::runtime_error("Unknown statement at token: " +
-                                 tokenToString(currentToken));
+        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<StatementAST> parseStatement() {
         // std::cout<<"parsing statment at: ";
@@ -240,18 +227,15 @@ class Parser {
             return parseFor();
         if (insideFunction && match(TokenType::KEYWORD, "return"))
             return parseReturn();
-        if (insideLoop && match(TokenType::KEYWORD, "break") ||
-            match(TokenType::KEYWORD, "continue"))
+        if (insideLoop && match(TokenType::KEYWORD, "break") || match(TokenType::KEYWORD, "continue"))
             return parseBreakContinue();
         if (match(TokenType::IDENTIFIER) &&
-            (matchnext(TokenType::PUNCTUATOR, ":=") ||
-             matchnext(TokenType::PUNCTUATOR, "=")))
+            (matchnext(TokenType::PUNCTUATOR, ":=") || matchnext(TokenType::PUNCTUATOR, "=")))
             return parseDeclarationAssignment();
         // auto x = parseExpr();
         // expect(TokenType::PUNCTUATOR,";");
         // return std::move(x);
-        throw std::runtime_error("Unknown statement at token: " +
-                                 tokenToString(currentToken));
+        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {
         // std::cout << "parsing proto: " << std::endl;
@@ -284,8 +268,7 @@ class Parser {
         auto body = parseBlock();
         insideFunction--;
 
-        return std::make_unique<FunctionAST>(name, std::move(proto), returnType,
-                                             std::move(body));
+        return std::make_unique<FunctionAST>(name, std::move(proto), returnType, std::move(body));
     }
     std::unique_ptr<StatementAST> parseConditional() {
         // std::cout<<"parsing condition: "<<std::endl;
@@ -293,8 +276,7 @@ class Parser {
         expect(TokenType::KEYWORD, "if");
         auto ifCond = parseExpr();
         auto ifBlock = parseBlock();
-        auto condAST = std::make_unique<ConditionalAST>(std::move(ifCond),
-                                                        std::move(ifBlock));
+        auto condAST = std::make_unique<ConditionalAST>(std::move(ifCond), std::move(ifBlock));
 
         while (match(TokenType::KEYWORD, "else")) {
             next();
@@ -302,8 +284,7 @@ class Parser {
                 next();
                 auto elifCond = parseExpr();
                 auto elifBlock = parseBlock();
-                condAST->elseIfs.push_back(
-                    {std::move(elifCond), std::move(elifBlock)});
+                condAST->elseIfs.push_back({std::move(elifCond), std::move(elifBlock)});
             } else {
                 condAST->elseBlock = parseBlock();
                 break;
@@ -335,8 +316,7 @@ class Parser {
         insideLoop++;
         auto body = parseBlock();
         insideLoop--;
-        return std::make_unique<ForAST>(std::move(init), std::move(cond),
-                                        std::move(update), std::move(body));
+        return std::make_unique<ForAST>(std::move(init), std::move(cond), std::move(update), std::move(body));
     }
 
   public:

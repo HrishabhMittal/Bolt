@@ -7,9 +7,6 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 - [X] Parser
 - [X] Emitter
 
-# To Fix
-- [ ] fix functions, right now doesnt actually account for scopes and stuff, might need to add scope managing instructions for better abstraction
-
 # To Do
 - [X] complete migration from NASM to BVM bytecode
 - [ ] global variable support
