@@ -19,15 +19,16 @@ class Emitter {
     Emitter(Parser &p) : programAST(std::move(p.parseProgram())) {}
     Emitter(std::unique_ptr<ProgramAST> prog) : programAST(std::move(prog)) {}
     void emitcode(std::string filename) {
-        size_t main_jmp = program.size();
-        program.push({bvm::OPCODE::CALL, {}});
-        program.push({bvm::OPCODE::HALT, {}});
+        // size_t main_jmp = program.size();
+        // program.push({bvm::OPCODE::CALL, {}});
+        // program.push({bvm::OPCODE::HALT, {}});
         programAST->codegen(program);
-        uint64_t main_ip = program.main();
-        if (main_ip == UINT64_MAX) {
-            throw std::runtime_error("main was not defined in the file");
-        }
-        program[main_jmp].operands[0] = main_ip;
+        // uint64_t main_ip = program.main();
+        // if (main_ip == UINT64_MAX) {
+        //     throw std::runtime_error("main was not defined in the file");
+        // }
+        // program[main_jmp].operands[0] = main_ip;
+        program.construct_full_code();
         std::ofstream file(filename, std::ios::binary);
         bvm::dump_bytecode({"BVM1.0 Executable", program.Code(), ""}, file);
         file.close();

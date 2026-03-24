@@ -6,7 +6,9 @@
 #include <bvm.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iostream>
+#include <list>
 #include <map>
 #include <memory>
 #include <ostream>
@@ -23,13 +25,42 @@ struct Function {
     std::string name;
     std::string ret_type;
 };
+struct call_ref_in_map {
+    std::string name;
+    uint64_t ins;
+};
+struct function_code_and_offset {
+    std::vector<bvm::instruction> code;
+    uint64_t offset = 0;
+};
 class Program {
-    uint64_t main_ip = UINT64_MAX;
     uint64_t iden_stack_size = 0;
-    std::map<std::string, std::vector<uint64_t>> patch_function;
+    std::string pushing_to_func;
+
+    // instructions i need to patch, which contain function calls
+    std::map<std::string, std::vector<call_ref_in_map>> patch_function;
+
+    // function code should be pushed here instead
+    // idea is:
+    // i need to rearrage the code like this
+    // <global declarations>
+    // call main
+    // halt
+    // <function declarations>
+    //
+    //
+    // need to store all function calls and patch them in the end
+    std::map<std::string, function_code_and_offset> function_code;
     std::vector<bvm::instruction> code;
     std::vector<std::vector<Identifier>> scope;
     std::map<std::string, Function> funcs;
+    void precalc_all_offsets() {
+        uint64_t off = code.size();
+        for (auto &i : function_code) {
+            i.second.offset = off;
+            off += i.second.code.size();
+        }
+    }
 
   public:
     Program() {
@@ -37,12 +68,63 @@ class Program {
         scope.reserve(16);
         scope.push_back({});
     }
+    void construct_full_code() {
+        // global decls alr there
+        push_call("main");
+        code.push_back({bvm::OPCODE::HALT});
+        precalc_all_offsets();
+        for (auto &i : patch_function)
+            for (auto &j : i.second) {
+                if (!funcs.count(i.first)) {
+                    throw std::runtime_error("function " + i.first + " is called but never declared");
+                }
+                if (j.name == "") {
+                    code[j.ins].operands[0] = function_code[i.first].offset;
+                } else
+                    function_code[j.name].code[j.ins].operands[0] = function_code[i.first].offset;
+            }
+        for (auto &i : function_code)
+            for (auto &j : i.second.code) {
+
+                // this doesnt cover other instructions but im not using them
+                // SO, this is a problem for future me :)))
+                if (j.op == bvm::OPCODE::JMP || j.op == bvm::OPCODE::JNC) {
+                    j.operands[0] += i.second.offset;
+                }
+                code.push_back(j);
+            }
+    }
     const std::vector<bvm::instruction> &Code() { return code; }
-    uint64_t main() { return main_ip; }
     size_t get_ip() { return code.size(); }
-    void push(const bvm::instruction &i) { code.push_back(i); }
-    uint64_t size() { return code.size(); }
-    bvm::instruction &operator[](size_t ind) { return code[ind]; }
+    void push(const bvm::instruction &i) {
+        if (pushing_to_func == "")
+            code.push_back(i);
+        else
+            function_code[pushing_to_func].code.push_back(i);
+    }
+    void push_call(const std::string &func_name) {
+        bvm::instruction i;
+        i.op = bvm::OPCODE::CALL;
+        if (pushing_to_func == "") {
+            patch_function[func_name].push_back({pushing_to_func, code.size()});
+            code.push_back(i);
+        } else {
+            patch_function[func_name].push_back({pushing_to_func, function_code[pushing_to_func].code.size()});
+            function_code[pushing_to_func].code.push_back(i);
+        }
+    }
+    uint64_t size() {
+        if (pushing_to_func == "") {
+            return code.size();
+        }
+        return function_code[pushing_to_func].code.size();
+    }
+    bvm::instruction &operator[](size_t ind) {
+        if (pushing_to_func == "") {
+            return code[ind];
+        }
+        return function_code[pushing_to_func].code[ind];
+    }
     void new_scope() { scope.push_back({}); }
     void push_undeclare_for_return() {
         for (ssize_t i = static_cast<ssize_t>(scope.size()) - 1; i > 0; i--) {
@@ -50,6 +132,7 @@ class Program {
                 push({bvm::OPCODE::UNDECLARE, {scope[i].size()}});
         }
     }
+    void push_in_func(const std::string &func_name) { pushing_to_func = func_name; }
     void delete_scope() {
         if (scope.back().size() > 0)
             push({bvm::OPCODE::UNDECLARE, {scope.back().size()}});
@@ -60,9 +143,6 @@ class Program {
         for (auto &j : funcs) {
             if (i.name == j.first)
                 throw std::runtime_error("redaclaration of " + i.name + " in the same scope.");
-        }
-        if (i.name == "main") {
-            main_ip = i.ip;
         }
         funcs[i.name] = i;
     }
@@ -442,8 +522,9 @@ class CallExprAST : public ExprAST {
         for (auto &&i : args) {
             i->codegen(program);
         }
-        Function func = program.get_function(callee.value);
-        program.push({bvm::OPCODE::CALL, {func.ip}});
+        // Function func = program.get_function(callee.value);
+        program.push_call(callee.value);
+        // program.push({bvm::OPCODE::CALL, {func.ip}});
     }
 };
 
@@ -596,15 +677,21 @@ class FunctionAST : public GlobalStatementAST {
         body->print(indent);
     }
     virtual void codegen(Program &program) override {
+        program.push_in_func(name.value);
         const bool push_scope = false;
+
+        // kinda useless now but ok
         uint64_t ip = program.get_ip();
         Function func{ip, name.value, returnType.value};
         program.declare_function(func);
         program.new_scope();
         proto->codegen(program);
         body->codegen(program, push_scope);
+        // generates redundant instruction for function calls, but DO NOT remove it
+        // the instruction is required in normal scope, just leave it be for now
+        // optimisation comes later
         program.delete_scope();
-        // kinda useless bcoz UNDECLARE called when returning
+        program.push_in_func("");
     }
 };
 class ConditionalAST : public StatementAST {

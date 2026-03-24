@@ -5,7 +5,6 @@ function factorial(number i32) (i32) {
         return number * factorial(number-1);
     }
 }
-
 function main() (i32) {
     return factorial(5);
 }

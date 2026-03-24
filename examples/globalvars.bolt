@@ -1,3 +1,5 @@
+x:=17;
+
 function voidFunc() (void) {
     x := 5;
     if x > 0 {
@@ -13,7 +15,7 @@ function findValue(target i32) (i32) {
     }
     return i;
 }
-
+y:=25;
 function main() (i32) {
-    return findValue(13);
+    return findValue(13)+x*y;
 }
