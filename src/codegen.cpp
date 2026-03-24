@@ -26,6 +26,7 @@ struct Function {
 class Program {
     uint64_t main_ip = UINT64_MAX;
     uint64_t iden_stack_size = 0;
+    std::map<std::string, std::vector<uint64_t>> patch_function;
     std::vector<bvm::instruction> code;
     std::vector<std::vector<Identifier>> scope;
     std::map<std::string, Function> funcs;

@@ -5,11 +5,10 @@
 #include <vector>
 inline std::string alone = "(){}[];,.";
 inline std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
-inline std::vector<std::string> keywords = {
-    "if",     "else",     "while",  "break", "continue", "for",  "struct",
-    "return", "function", "import", "bool",  "string",   "void", "true",
-    "false",  "u8",       "u16",    "u32",   "u64",      "i8",   "i16",
-    "i32",    "i64",      "f32",    "f64"};
+inline std::vector<std::string> keywords = {"if",     "else",     "while",  "break", "continue", "for",  "struct",
+                                            "return", "function", "import", "bool",  "string",   "void", "true",
+                                            "false",  "u8",       "u16",    "u32",   "u64",      "i8",   "i16",
+                                            "i32",    "i64",      "f32",    "f64"};
 
 inline std::string repeat(const std::string &s, int i) {
     std::string str;
@@ -19,16 +18,7 @@ inline std::string repeat(const std::string &s, int i) {
 }
 enum Value { DOUBLE, FLOAT, INT, BOOL, CHAR, STRING };
 
-enum class TokenType {
-    TK_ERR,
-    IDENTIFIER,
-    KEYWORD,
-    PUNCTUATOR,
-    STRING,
-    NUMBER,
-    NEWLINE,
-    TK_EOF
-};
+enum class TokenType { TK_ERR, IDENTIFIER, KEYWORD, PUNCTUATOR, STRING, NUMBER, NEWLINE, TK_EOF };
 
 struct Token {
     TokenType ttype;
@@ -39,9 +29,7 @@ struct Token {
     // maybe i have to remove this if i run into problems later
     bool operator==(const char *c) { return c == value; }
 };
-inline bool operator==(const Token &t1, const Token &t2) {
-    return t1.ttype == t2.ttype && t1.value == t2.value;
-}
+inline bool operator==(const Token &t1, const Token &t2) { return t1.ttype == t2.ttype && t1.value == t2.value; }
 inline std::string tokenToString(const Token &tok) {
     std::string typeStr;
     switch (tok.ttype) {

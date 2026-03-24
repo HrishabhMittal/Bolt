@@ -16,7 +16,6 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 - [ ] change syntax
 - [ ] string support
 - [ ] call to and link with c stdlib
-- [ ] better abstraction?
 - [ ] better testcases
 - [ ] structs with methods
 - [ ] enums

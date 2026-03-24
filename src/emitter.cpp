@@ -29,7 +29,7 @@ class Emitter {
         }
         program[main_jmp].operands[0] = main_ip;
         std::ofstream file(filename, std::ios::binary);
-        bvm::dump_bytecode(program.Code(), file);
+        bvm::dump_bytecode({"BVM1.0 Executable", program.Code(), ""}, file);
         file.close();
     }
 };
