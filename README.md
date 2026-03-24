@@ -9,6 +9,7 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 
 # To Do
 - [X] complete migration from NASM to BVM bytecode
+- [ ] add print() to actually print stuff
 - [ ] global variable support
 - [ ] imports
 - [ ] linking to c libraries
