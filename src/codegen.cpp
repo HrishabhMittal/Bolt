@@ -223,7 +223,100 @@ class ExprAST : public AST {
     virtual std::string evaltype(Program &program) = 0;
     virtual ~ExprAST() = default;
 };
+class TypeCastAST : public ExprAST {
+  public:
+    std::unique_ptr<ExprAST> arg;
+    Token cast_to;
+    TypeCastAST(std::unique_ptr<ExprAST> arg, Token t) : arg(std::move(arg)), cast_to(t) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        indent += 2;
+        std::cout << "TypeCastAST: " << std::endl;
+        printSpace(indent);
+        std::cout << "convert to: " << cast_to << std::endl;
+        printSpace(indent);
+        std::cout << "converting: " << std::endl;
+        arg->print();
+    }
+    virtual std::string evaltype(Program &program) override { return cast_to.value; }
+    virtual void codegen(Program &program) override {
+        std::string argtype = arg->evaltype(program);
+        std::string target = cast_to.value;
+        arg->codegen(program);
+        if (argtype == target)
+            return;
+        bool arg_is_float = (argtype == "f32" || argtype == "f64");
+        bool target_is_float = (target == "f32" || target == "f64");
 
+        if (arg_is_float && target_is_float) {
+            if (argtype == "f32" && target == "f64") {
+                program.push({bvm::OPCODE::F32_TO_F64});
+                return;
+            } else if (argtype == "f64" && target == "f32") {
+                program.push({bvm::OPCODE::F64_TO_F32});
+                return;
+            }
+        } else if (arg_is_float && !target_is_float) {
+            bool target_signed = (target[0] == 'i');
+            bool target_64 = (target == "i64" || target == "u64");
+
+            if (argtype == "f32") {
+                if (target_64) {
+                    program.push({target_signed ? bvm::OPCODE::F32_TO_I64 : bvm::OPCODE::F32_TO_U64});
+                    return;
+                } else {
+                    program.push({target_signed ? bvm::OPCODE::F32_TO_I32 : bvm::OPCODE::F32_TO_U32});
+                    return;
+                }
+            } else {
+                if (target_64) {
+                    program.push({target_signed ? bvm::OPCODE::F64_TO_I64 : bvm::OPCODE::F64_TO_U64});
+                    return;
+                } else {
+                    program.push({target_signed ? bvm::OPCODE::F64_TO_I32 : bvm::OPCODE::F64_TO_U32});
+                    return;
+                }
+            }
+        } else if (!arg_is_float && target_is_float) {
+            bool arg_signed = (argtype[0] == 'i');
+            bool arg_64 = (argtype == "i64" || argtype == "u64");
+
+            if (target == "f32") {
+                if (arg_64) {
+                    program.push({arg_signed ? bvm::OPCODE::I64_TO_F32 : bvm::OPCODE::U64_TO_F32});
+                    return;
+                } else {
+                    program.push({arg_signed ? bvm::OPCODE::I32_TO_F32 : bvm::OPCODE::U32_TO_F32});
+                    return;
+                }
+            } else {
+                if (arg_64) {
+                    program.push({arg_signed ? bvm::OPCODE::I64_TO_F64 : bvm::OPCODE::U64_TO_F64});
+                    return;
+                } else {
+                    program.push({arg_signed ? bvm::OPCODE::I32_TO_F64 : bvm::OPCODE::U32_TO_F64});
+                    return;
+                }
+            }
+        } else if (!arg_is_float && !target_is_float) {
+            bool arg_signed = (argtype[0] == 'i');
+            bool arg_64 = (argtype == "i64" || argtype == "u64");
+            bool target_64 = (target == "i64" || target == "u64");
+
+            if (!arg_64 && target_64) {
+                program.push({arg_signed ? bvm::OPCODE::I32_EXTEND_I64 : bvm::OPCODE::U32_EXTEND_I64});
+                return;
+            } else if (arg_64 && !target_64) {
+                program.push({bvm::OPCODE::I32_WRAP_I64});
+                return;
+            } else {
+                return;
+            }
+        }
+        throw std::runtime_error("conversion from type: " + argtype + " to type: " + cast_to.value +
+                                 " is not possible.");
+    }
+};
 class BinaryExprAST : public ExprAST {
   public:
     std::unique_ptr<ExprAST> lhs;
@@ -236,7 +329,7 @@ class BinaryExprAST : public ExprAST {
         indent += 2;
         std::cout << "BinaryExprAST: " << std::endl;
         printSpace(indent);
-        std::cout << "Token: " << (op) << std::endl;
+        std::cout << "op: " << (op) << std::endl;
         lhs->print(indent);
         rhs->print(indent);
     }
@@ -483,11 +576,11 @@ class StringExprAST : public ExprAST {
     }
     virtual std::string evaltype(Program &program) override { return "string"; }
     virtual void codegen(Program &program) override {
-        uint64_t len=str.value.size()-2;
+        uint64_t len = str.value.size() - 2;
         program.push({bvm::OPCODE::PUSH, {len}});
         uint64_t data_ptr = program.data_size();
         program.push({bvm::OPCODE::STRING_FROM, {data_ptr}});
-        program.data_push(str.value.substr(1,len));
+        program.data_push(str.value.substr(1, len));
     }
 };
 

@@ -5,10 +5,10 @@
 #include <vector>
 inline std::string alone = "(){}[];,.";
 inline std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
-inline std::vector<std::string> keywords = {"if",     "else",     "while",  "break", "continue", "for",  "struct",
-                                            "return", "function", "import", "bool",  "string",   "void", "true",
-                                            "false",  "u8",       "u16",    "u32",   "u64",      "i8",   "i16",
-                                            "i32",    "i64",      "f32",    "f64"};
+inline std::vector<std::string> keywords = {"if",     "else",     "while",  "break",   "continue", "for",    "struct",
+                                            "return", "function", "import", "package", "bool",     "string", "void",
+                                            "true",   "false",    "u8",     "u16",     "u32",      "u64",    "i8",
+                                            "i16",    "i32",      "i64",    "f32",     "f64"};
 
 inline std::string repeat(const std::string &s, int i) {
     std::string str;

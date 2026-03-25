@@ -1,5 +1,7 @@
 #include "codegen.cpp"
+#include "header.hpp"
 #include <iostream>
+#include <memory>
 #include <string>
 
 class Parser {
@@ -126,9 +128,20 @@ class Parser {
         }
         return -1;
     }
-
+    std::unique_ptr<ExprAST> parseTypeCast() {
+        auto cast_type = expect(TokenType::KEYWORD);
+        expect(TokenType::PUNCTUATOR,"(");
+        auto expr = parseExpr();
+        expect(TokenType::PUNCTUATOR,")");
+        auto cast=std::make_unique<TypeCastAST>(std::move(expr),cast_type);
+        return cast;
+    }
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
-        auto lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
+        std::unique_ptr<ExprAST> lhs;
+        if (match(TokenType::KEYWORD)) {
+            lhs = parseTypeCast();
+        } else
+            lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
         while (true) {
             if (!match_binop()) {
                 return lhs;
