@@ -18,7 +18,7 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 - [X] package keyword
 - [X] patching multiple files into single bytecode file
 - [X] import keyword
-- [ ] defining internal functions and calling their bytecode
+- [X] defining internal functions and calling their bytecode
 - [ ] add print() to actually print stuff
 - [ ] build stdlib
 - [ ] structs with methods
