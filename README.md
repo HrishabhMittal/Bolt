@@ -15,13 +15,15 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 - [X] introducing types like u/i8-64, f32, f64
 - [X] string support
 - [X] type casting support
-- [ ] import and package
+- [X] package keyword
 - [X] patching multiple files into single bytecode file
+- [ ] import keyword
 - [ ] defining internal functions and calling their bytecode
 - [ ] add print() to actually print stuff
 - [ ] build stdlib
 - [ ] structs with methods
 - [ ] enums
+- [ ] generics
 
 
 # Low Priority
