@@ -8,16 +8,22 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 - [X] Emitter
 
 # To Do
+
+# High Priority
 - [X] complete migration from NASM to BVM bytecode
-- [ ] add print() to actually print stuff
 - [X] global variable support
-- [ ] imports
-- [ ] linking to c libraries
-- [ ] change syntax
+- [X] introducing types like u/i8-64, f32, f64
 - [ ] string support
-- [ ] call to and link with c stdlib
-- [ ] better testcases
+- [ ] import and package
+- [ ] patching multiple files into single bytecode file
+- [ ] defining internal functions and calling their bytecode
+- [ ] add print() to actually print stuff
+- [ ] build stdlib
 - [ ] structs with methods
 - [ ] enums
-- [ ] make everything a class, introducing types like i8-64, f32, f64
-- [ ] build stdlib
+
+
+# Low Priority
+- [ ] change syntax
+- [ ] better testcases
+- [ ] make everything a class
