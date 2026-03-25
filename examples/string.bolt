@@ -1,0 +1,4 @@
+function main() (i32) {
+    x := "Hello";
+    return 0;
+}

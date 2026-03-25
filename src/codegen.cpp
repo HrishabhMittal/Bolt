@@ -37,6 +37,7 @@ class Program {
     uint64_t iden_stack_size = 0;
     std::string pushing_to_func;
 
+    std::string data_section;
     // instructions i need to patch, which contain function calls
     std::map<std::string, std::vector<call_ref_in_map>> patch_function;
 
@@ -94,6 +95,7 @@ class Program {
                 code.push_back(j);
             }
     }
+    const std::string &Data() { return data_section; }
     const std::vector<bvm::instruction> &Code() { return code; }
     size_t get_ip() { return code.size(); }
     void push(const bvm::instruction &i) {
@@ -113,6 +115,8 @@ class Program {
             function_code[pushing_to_func].code.push_back(i);
         }
     }
+    uint64_t data_size() { return data_section.size(); }
+    void data_push(const std::string &s) { data_section += s; }
     uint64_t size() {
         if (pushing_to_func == "") {
             return code.size();
@@ -475,10 +479,16 @@ class StringExprAST : public ExprAST {
         std::cout << "StringExprAST: " << std::endl;
         indent += 2;
         printSpace(indent);
-        std::cout << "bool: " << str << std::endl;
+        std::cout << "string: " << str << std::endl;
     }
     virtual std::string evaltype(Program &program) override { return "string"; }
-    virtual void codegen(Program &program) override { throw std::runtime_error("string support not implemented"); }
+    virtual void codegen(Program &program) override {
+        uint64_t len=str.value.size()-2;
+        program.push({bvm::OPCODE::PUSH, {len}});
+        uint64_t data_ptr = program.data_size();
+        program.push({bvm::OPCODE::STRING_FROM, {data_ptr}});
+        program.data_push(str.value.substr(1,len));
+    }
 };
 
 class IdentifierExprAST : public ExprAST {
