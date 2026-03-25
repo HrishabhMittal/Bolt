@@ -25,6 +25,7 @@ struct Function {
     uint64_t ip;
     std::string name;
     std::string ret_type;
+    bool is_external = false;
 };
 struct call_ref_in_map {
     std::string name;
@@ -70,7 +71,7 @@ class Program {
         scope.reserve(16);
         scope.push_back({});
     }
-    void construct_full_code() {
+    bvm::program construct_full_code() {
         // global decls alr there
         push_call("main.main");
         code.push_back({bvm::OPCODE::HALT});
@@ -79,6 +80,13 @@ class Program {
             for (auto &j : i.second) {
                 if (!funcs.count(i.first)) {
                     throw std::runtime_error("function " + i.first + " is called but never declared");
+                }
+                if (funcs[i.first].is_external) {
+                    code[j.ins].op = bvm::OPCODE::CALL_EXTERN;
+                    uint64_t string_ptr = data_size();
+                    data_push(i.first + '\0');
+                    code[j.ins].operands[0] = string_ptr;
+                    continue;
                 }
                 if (j.name == "") {
                     code[j.ins].operands[0] = function_code[i.first].offset;
@@ -98,6 +106,20 @@ class Program {
                 }
                 code.push_back(j);
             }
+        bvm::program final_prog;
+        for (const auto& [name, func] : funcs) {
+            if (!func.is_external) { 
+                final_prog.exported_functions[name] = func.ip + function_code[name].offset;
+            }
+        }
+        if (!scope.empty()) {
+            for (size_t i = 0; i < scope[0].size(); i++) {
+                final_prog.exported_globals[scope[0][i].name] = i;
+            }
+        }
+        final_prog.code = code;
+        final_prog.data = data_section;
+        return final_prog;
     }
     const std::string &Data() { return data_section; }
     const std::vector<bvm::instruction> &Code() { return code; }
@@ -813,7 +835,29 @@ class BlockAST : public StatementAST {
             program.delete_scope();
     }
 };
-
+class ExternFunctionAST : public GlobalStatementAST {
+  public:
+    Token name;
+    std::unique_ptr<PrototypeAST> proto;
+    Token returnType;
+    std::string pkg_name;
+    ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Token r, std::string pkg)
+        : name(n), proto(std::move(p)), returnType(r), pkg_name(pkg) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "ExternFunctionAST: " << std::endl;
+        indent += 2;
+        printSpace(indent);
+        std::cout << "name: " << name << std::endl;
+        printSpace(indent);
+        std::cout << "returnType: " << returnType << std::endl;
+        proto->print(indent);
+    }
+    virtual void codegen(Program &program) override {
+        std::string resolved_name = pkg_name + "." + name.value;
+        program.declare_function({UINT64_MAX, resolved_name, returnType.value, true});
+    }
+};
 class FunctionAST : public GlobalStatementAST {
   public:
     Token name;

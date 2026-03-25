@@ -211,6 +211,19 @@ class Parser {
         expect(TokenType::PUNCTUATOR, "}");
         return block;
     }
+    std::unique_ptr<GlobalStatementAST> parseExternFunction() {
+        expect(TokenType::KEYWORD,"extern");
+        expect(TokenType::KEYWORD, "function");
+        Token name = expect(TokenType::IDENTIFIER);
+        expect(TokenType::PUNCTUATOR, "(");
+        auto proto = parsePrototype();
+        expect(TokenType::PUNCTUATOR, ")");
+        expect(TokenType::PUNCTUATOR, "(");
+        Token returnType = expect(TokenType::KEYWORD);
+        expect(TokenType::PUNCTUATOR, ")");
+        expect(TokenType::PUNCTUATOR, ";");
+        return std::make_unique<ExternFunctionAST>(name, std::move(proto), returnType, current_package);
+    }
     std::unique_ptr<GlobalStatementAST> parseGlobalDeclaration() {
 
         // std::cout<<tokenToString(currentToken)<<std::endl;
@@ -250,6 +263,8 @@ class Parser {
         // std::cout<<tokenToString(currentToken)<<std::endl;
         if (match(TokenType::KEYWORD, "function"))
             return parseFunction();
+        if (match(TokenType::KEYWORD, "extern"))
+            return parseExternFunction();
         if (match(TokenType::IDENTIFIER) && matchnext(TokenType::PUNCTUATOR, ":="))
             return parseGlobalDeclaration();
         // auto x = parseExpr();
@@ -386,7 +401,6 @@ class Parser {
             alias = pkg_name;
         return std::make_unique<ImportAST>(pkg_name, alias);
     }
-
   public:
     Parser() {}
     void newFile(const std::string &filename) { l = Lexer(filename); }

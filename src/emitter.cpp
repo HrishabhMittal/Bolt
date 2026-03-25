@@ -35,6 +35,9 @@ class Emitter {
                     std::string extend = func->pkg_name + "." + func->name.value;
                     program.declare_function({UINT64_MAX, extend, func->returnType.value});
                     functions.push_back(func);
+                } else if (auto ext = dynamic_cast<ExternFunctionAST *>(statement.get())) {
+                    std::string extend = ext->pkg_name + "." + ext->name.value;
+                    program.declare_function({UINT64_MAX, extend, ext->returnType.value, true});
                 } else if (auto glob = dynamic_cast<GlobalDeclarationAST *>(statement.get())) {
                     std::string extend = glob->pkg_name + "." + glob->identifier.value;
                     globals.push_back(glob);
@@ -79,10 +82,10 @@ class Emitter {
         for (auto f : functions) {
             f->codegen(program);
         }
-
-        program.construct_full_code();
+        bvm::program out_prog = program.construct_full_code(); 
+        out_prog.header = "BVM1.0 Executable";
         std::ofstream file(filename, std::ios::binary);
-        bvm::dump_bytecode({"BVM1.0 Executable", program.Code(), program.Data()}, file);
+        bvm::dump_bytecode(out_prog, file);
         file.close();
     }
 };
