@@ -32,15 +32,16 @@ class Emitter {
         for (auto &prog : progs) {
             for (auto &statement : prog->statements) {
                 if (auto func = dynamic_cast<FunctionAST *>(statement.get())) {
-                    program.declare_function({UINT64_MAX, func->name.value, func->returnType.value});
+                    std::string extend = func->pkg_name + "." + func->name.value;
+                    program.declare_function({UINT64_MAX, extend, func->returnType.value});
                     functions.push_back(func);
                 } else if (auto glob = dynamic_cast<GlobalDeclarationAST *>(statement.get())) {
+                    std::string extend = glob->pkg_name + "." + glob->identifier.value;
                     globals.push_back(glob);
-                    global_map[glob->identifier.value] = glob;
+                    global_map[extend] = glob;
                 }
             }
         }
-
         std::vector<GlobalDeclarationAST *> sorted_globals;
         std::map<std::string, int> state;
 
@@ -65,9 +66,11 @@ class Emitter {
             state[name] = 2;
             sorted_globals.push_back(glob);
         };
+
         for (auto g : globals) {
-            if (state[g->identifier.value] == 0) {
-                doofus(g->identifier.value);
+            std::string extended_name = g->pkg_name + "." + g->identifier.value;
+            if (state[extended_name] == 0) {
+                doofus(extended_name);
             }
         }
         for (auto g : sorted_globals) {

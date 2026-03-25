@@ -1,6 +1,0 @@
-package main
-
-
-function divideBy5(number i32) (f32) {
-    return f32(number)/f32(5);
-}

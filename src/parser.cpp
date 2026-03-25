@@ -9,6 +9,8 @@ class Parser {
     Token currentToken;
     int insideFunction = 0;
     int insideLoop = 0;
+    std::string current_package;
+    std::map<std::string, std::string> current_imports;
     void next() {
         do {
             currentToken = l.gettoken();
@@ -77,19 +79,45 @@ class Parser {
             return std::make_unique<StringExprAST>(expect(TokenType::STRING));
         if (match(TokenType::IDENTIFIER)) {
             Token id = expect(TokenType::IDENTIFIER);
+            if (match(TokenType::PUNCTUATOR, ".")) {
+                next();
+                Token field = expect(TokenType::IDENTIFIER);
+                std::string pkg = id.value;
+                if (current_imports.count(id.value)) {
+                    pkg = current_imports[id.value];
+                }
+                id.value = pkg + "." + field.value;
+            }
             if (match(TokenType::PUNCTUATOR, "(")) {
                 next();
                 std::vector<std::unique_ptr<ExprAST>> args;
                 if (!match(TokenType::PUNCTUATOR, ")")) {
-                    do {
+                    while (true) {
                         args.push_back(parseExpr());
-                    } while (match(TokenType::PUNCTUATOR, ","));
+                        if (!match(TokenType::PUNCTUATOR, ",")) {
+                            break;
+                        }
+                        expect(TokenType::PUNCTUATOR, ",");
+                    }
                 }
                 expect(TokenType::PUNCTUATOR, ")");
-                return std::make_unique<CallExprAST>(id, std::move(args));
+                return std::make_unique<CallExprAST>(id, std::move(args), current_package);
             }
-            return std::make_unique<IdentifierExprAST>(id);
+            // holy bugs
+            //            if (match(TokenType::PUNCTUATOR, "(")) {
+            //                next();
+            //                std::vector<std::unique_ptr<ExprAST>> args;
+            //                if (!match(TokenType::PUNCTUATOR, ")")) {
+            //                    do {
+            //                        args.push_back(parseExpr());
+            //                    } while (match(TokenType::PUNCTUATOR, ","));
+            //                }
+            //                expect(TokenType::PUNCTUATOR, ")");
+            //                return std::make_unique<CallExprAST>(id, std::move(args), current_package);
+            //            }
+            return std::make_unique<IdentifierExprAST>(id, current_package);
         }
+
         throw std::runtime_error("Invalid value expression" + tokenToString(currentToken));
     }
 
@@ -138,7 +166,9 @@ class Parser {
     }
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
         std::unique_ptr<ExprAST> lhs;
-        if (match(TokenType::KEYWORD)) {
+        // run into problems bcoz, expr thinks "false" is a typecast
+        // hacky solution for now, not proud of it
+        if (match(TokenType::KEYWORD) && !match(TokenType::KEYWORD, "true") && !match(TokenType::KEYWORD, "false")) {
             lhs = parseTypeCast();
         } else
             lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
@@ -191,7 +221,7 @@ class Parser {
             auto expr = parseExpr();
             expect(TokenType::PUNCTUATOR, ";");
 
-            return std::make_unique<GlobalDeclarationAST>(id, std::move(expr));
+            return std::make_unique<GlobalDeclarationAST>(id, std::move(expr), current_package);
         }
         throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
@@ -206,12 +236,12 @@ class Parser {
             auto expr = parseExpr();
             expect(TokenType::PUNCTUATOR, ";");
 
-            return std::make_unique<DeclarationAST>(id, std::move(expr));
+            return std::make_unique<DeclarationAST>(id, std::move(expr), current_package);
         } else if (match(TokenType::PUNCTUATOR, "=")) {
             next();
             auto expr = parseExpr();
             expect(TokenType::PUNCTUATOR, ";");
-            return std::make_unique<AssignmentAST>(id, std::move(expr));
+            return std::make_unique<AssignmentAST>(id, std::move(expr), current_package);
         }
         throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
@@ -264,7 +294,7 @@ class Parser {
                 expect(TokenType::PUNCTUATOR, ",");
             }
         }
-        return std::make_unique<PrototypeAST>(std::move(args));
+        return std::make_unique<PrototypeAST>(std::move(args), current_package);
     }
     std::unique_ptr<FunctionAST> parseFunction() {
         // std::cout<<"parsing function: "<<std::endl;
@@ -281,7 +311,7 @@ class Parser {
         auto body = parseBlock();
         insideFunction--;
 
-        return std::make_unique<FunctionAST>(name, std::move(proto), returnType, std::move(body));
+        return std::make_unique<FunctionAST>(name, std::move(proto), returnType, std::move(body), current_package);
     }
     std::unique_ptr<StatementAST> parseConditional() {
         // std::cout<<"parsing condition: "<<std::endl;
@@ -316,6 +346,14 @@ class Parser {
         return std::make_unique<WhileAST>(std::move(cond), std::move(body));
     }
 
+    // specifically for for statements
+    std::unique_ptr<AssignmentAST> parseAssignmentNoSemicolon() {
+        Token update_id = expect(TokenType::IDENTIFIER);
+        expect(TokenType::PUNCTUATOR, "=");
+        auto update_expr = parseExpr();
+        auto update = std::make_unique<AssignmentAST>(update_id, std::move(update_expr), current_package);
+        return update;
+    }
     std::unique_ptr<StatementAST> parseFor() {
         // std::cout<<"parsing for: "<<std::endl;
         // std::cout<<tokenToString(currentToken)<<std::endl;
@@ -324,7 +362,7 @@ class Parser {
         auto init = parseDeclarationAssignment();
         auto cond = parseExpr();
         expect(TokenType::PUNCTUATOR, ";");
-        auto update = parseExpr();
+        auto update = parseAssignmentNoSemicolon();
         expect(TokenType::PUNCTUATOR, ")");
         insideLoop++;
         auto body = parseBlock();
@@ -336,6 +374,18 @@ class Parser {
         auto iden = expect(TokenType::IDENTIFIER);
         return std::make_unique<PackageAST>(iden);
     }
+    std::unique_ptr<ImportAST> parseImport() {
+        expect(TokenType::KEYWORD, "import");
+        std::string alias = "";
+        if (match(TokenType::IDENTIFIER)) {
+            alias = expect(TokenType::IDENTIFIER).value;
+        }
+        std::string pkg_name = expect(TokenType::STRING).value;
+        pkg_name = pkg_name.substr(1, pkg_name.size() - 2);
+        if (alias == "")
+            alias = pkg_name;
+        return std::make_unique<ImportAST>(pkg_name, alias);
+    }
 
   public:
     Parser() {}
@@ -346,6 +396,14 @@ class Parser {
         next();
         // kinda weird? yeah but fits with the theme of the code
         program->definePackage(parsePackage());
+        current_package = program->package;
+        current_imports.clear();
+
+        // imports RAHHH
+        while (match(TokenType::KEYWORD, "import")) {
+            auto imp = parseImport();
+            current_imports[imp->alias] = imp->pkg;
+        }
         while (currentToken.ttype != TokenType::TK_EOF) {
             program->addStatement(parseGlobalStatement());
         }

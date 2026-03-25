@@ -1,6 +1,6 @@
 #!/bin/bash
 echo ------------ RUNNING ON EXAMPLE --------------
-./build/boltc "$1" main
+./build/boltc examples main
 ./bvm/build/objdump main
 ./bvm/build/bvm main
 rm main

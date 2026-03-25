@@ -72,7 +72,7 @@ class Program {
     }
     void construct_full_code() {
         // global decls alr there
-        push_call("main");
+        push_call("main.main");
         code.push_back({bvm::OPCODE::HALT});
         precalc_all_offsets();
         for (auto &i : patch_function)
@@ -158,11 +158,13 @@ class Program {
         }
         funcs[i.name] = i;
     }
-    Function get_function(std::string name) {
+    Function get_function(std::string name, std::string pkg_name) {
         if (funcs.count(name))
             return funcs[name];
-        else
-            throw std::runtime_error("no declaration found for function " + name);
+        if (name.find('.') == std::string::npos && funcs.count(pkg_name + "." + name)) {
+            return funcs[pkg_name + "." + name];
+        }
+        throw std::runtime_error("no declaration found for function " + name);
     }
     void declare(Identifier i) {
         for (auto j : scope.back()) {
@@ -173,7 +175,7 @@ class Program {
         scope.back().push_back(i);
         iden_stack_size++;
     }
-    int64_t getaddress(std::string iden) {
+    int64_t getaddress(std::string iden, std::string pkg_name) {
         ssize_t top = 0;
         for (ssize_t i = static_cast<ssize_t>(scope.size()) - 1; i >= 0; i--) {
             for (ssize_t j = static_cast<ssize_t>(scope[i].size()) - 1; j >= 0; j--) {
@@ -184,15 +186,21 @@ class Program {
                     else
                         return top;
                 }
+                if (i == 0 && iden.find('.') == std::string::npos && scope[i][j].name == pkg_name + "." + iden) {
+                    return j;
+                }
             }
         }
         throw std::runtime_error("identifier " + iden + " doesn't exist.");
     }
-    std::string gettype(std::string iden) {
+    std::string gettype(std::string iden, std::string pkg_name) {
         for (ssize_t i = static_cast<int64_t>(scope.size()) - 1; i >= 0; i--) {
             for (size_t j = 0; j < scope[i].size(); j++) {
                 if (scope[i][j].name == iden)
                     return scope[i][j].type;
+                if (i == 0 && iden.find('.') == std::string::npos && scope[i][j].name == pkg_name + "." + iden) {
+                    return scope[i][j].type;
+                }
             }
         }
         throw std::runtime_error("identifier " + iden + " doesn't exist.");
@@ -376,8 +384,8 @@ class BinaryExprAST : public ExprAST {
     virtual void codegen(Program &program) override {
         lhs->codegen(program);
         rhs->codegen(program);
-        auto retval1 = evaltype(program);
-        auto retval2 = evaltype(program);
+        auto retval1 = lhs->evaltype(program);
+        auto retval2 = rhs->evaltype(program);
         if (retval1 != retval2) {
             throw std::runtime_error("operation on \"" + retval1 + "\" and \"" + retval2 + "\" is not supported");
         }
@@ -478,7 +486,7 @@ class UnaryExprAST : public ExprAST {
         operand->print(indent);
     }
     virtual std::string evaltype(Program &program) override {
-        static auto retval = operand->evaltype(program);
+        auto retval = operand->evaltype(program);
         return retval;
     }
     virtual std::vector<std::string> get_dependencies() override { return operand->get_dependencies(); }
@@ -499,6 +507,8 @@ class UnaryExprAST : public ExprAST {
             }
         } else if (op == "+") {
             // do nothing???
+        } else if (op == "!") {
+            program.push({bvm::OPCODE::BOOL_NOT});
         }
     }
 };
@@ -540,7 +550,7 @@ class NumberExprAST : public ExprAST {
     }
     virtual std::vector<std::string> get_dependencies() override { return {}; }
     virtual std::string evaltype(Program &program) override {
-        static auto vt = valuetype(number.value);
+        auto vt = valuetype(number.value);
         if (vt == INT)
             return "i32";
         else if (vt == FLOAT)
@@ -607,7 +617,8 @@ class StringExprAST : public ExprAST {
 class IdentifierExprAST : public ExprAST {
   public:
     Token identifier;
-    IdentifierExprAST(Token id) : identifier(id) {}
+    std::string pkg_name;
+    IdentifierExprAST(Token id, std::string pkg) : identifier(id), pkg_name(pkg) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "IdentifierExprAST: " << std::endl;
@@ -615,11 +626,15 @@ class IdentifierExprAST : public ExprAST {
         printSpace(indent);
         std::cout << "identifier: " << (identifier) << std::endl;
     }
-    virtual std::vector<std::string> get_dependencies() override { return {identifier.value}; }
-    virtual std::string evaltype(Program &program) override { return program.gettype(identifier.value); }
+    virtual std::string evaltype(Program &program) override { return program.gettype(identifier.value, pkg_name); }
     virtual void codegen(Program &program) override {
-        uint64_t ind = std::bit_cast<uint64_t>(program.getaddress(identifier.value));
+        uint64_t ind = std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name));
         program.push({bvm::OPCODE::LOAD, {ind}});
+    }
+    virtual std::vector<std::string> get_dependencies() override {
+        if (identifier.value.find('.') != std::string::npos)
+            return {identifier.value};
+        return {pkg_name + "." + identifier.value};
     }
 };
 
@@ -627,7 +642,9 @@ class CallExprAST : public ExprAST {
   public:
     Token callee;
     std::vector<std::unique_ptr<ExprAST>> args;
-    CallExprAST(Token c, std::vector<std::unique_ptr<ExprAST>> a) : callee(c), args(std::move(a)) {}
+    std::string pkg_name;
+    CallExprAST(Token c, std::vector<std::unique_ptr<ExprAST>> a, std::string pkg)
+        : pkg_name(pkg), callee(c), args(std::move(a)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "CallExprAST: " << std::endl;
@@ -647,7 +664,7 @@ class CallExprAST : public ExprAST {
         return deps;
     }
     virtual std::string evaltype(Program &program) override {
-        Function func = program.get_function(callee.value);
+        Function func = program.get_function(callee.value, pkg_name);
         return func.ret_type;
     }
     virtual void codegen(Program &program) override {
@@ -655,7 +672,8 @@ class CallExprAST : public ExprAST {
             i->codegen(program);
         }
         // Function func = program.get_function(callee.value);
-        program.push_call(callee.value);
+        Function resolved_func = program.get_function(callee.value, pkg_name);
+        program.push_call(resolved_func.name);
         // program.push({bvm::OPCODE::CALL, {func.ip}});
     }
 };
@@ -663,8 +681,10 @@ class CallExprAST : public ExprAST {
 class GlobalDeclarationAST : public GlobalStatementAST {
   public:
     Token identifier;
+    std::string pkg_name;
     std::unique_ptr<ExprAST> expr;
-    GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e) : identifier(id), expr(std::move(e)) {}
+    GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg)
+        : pkg_name(pkg), identifier(id), expr(std::move(e)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "GlobalDeclarationAST: " << std::endl;
@@ -678,14 +698,16 @@ class GlobalDeclarationAST : public GlobalStatementAST {
         Identifier i = {identifier.value, type};
         expr->codegen(program);
         program.declare(i);
-        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name))}});
+        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
     }
 };
 class DeclarationAST : public StatementAST {
   public:
     Token identifier;
+    std::string pkg_name;
     std::unique_ptr<ExprAST> expr;
-    DeclarationAST(Token id, std::unique_ptr<ExprAST> e) : identifier(id), expr(std::move(e)) {}
+    DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg)
+        : pkg_name(pkg), identifier(id), expr(std::move(e)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "DeclarationAST: " << std::endl;
@@ -699,7 +721,7 @@ class DeclarationAST : public StatementAST {
         Identifier i = {identifier.value, type};
         expr->codegen(program);
         program.declare(i);
-        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name))}});
+        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
     }
 };
 
@@ -707,7 +729,9 @@ class AssignmentAST : public StatementAST {
   public:
     Token identifier;
     std::unique_ptr<ExprAST> expr;
-    AssignmentAST(Token id, std::unique_ptr<ExprAST> e) : identifier(id), expr(std::move(e)) {}
+    std::string pkg_name;
+    AssignmentAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg)
+        : pkg_name(pkg), identifier(id), expr(std::move(e)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "AssignmentAST: " << std::endl;
@@ -718,20 +742,21 @@ class AssignmentAST : public StatementAST {
     }
     virtual void codegen(Program &program) override {
         auto type = expr->evaltype(program);
-        auto iden_type = program.gettype(identifier.value);
+        auto iden_type = program.gettype(identifier.value, pkg_name);
         if (type != iden_type) {
             throw std::runtime_error("attempt to assign " + type + " to " + identifier.value + " of type " + iden_type +
                                      " failed.");
         }
         expr->codegen(program);
-        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(identifier.value))}});
+        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name))}});
     }
 };
 
 class PrototypeAST : public StatementAST {
   public:
+    std::string pkg_name;
     std::vector<std::pair<Token, Token>> args;
-    PrototypeAST(std::vector<std::pair<Token, Token>> a) : args(std::move(a)) {}
+    PrototypeAST(std::vector<std::pair<Token, Token>> a, std::string pkg) : pkg_name(pkg), args(std::move(a)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "PrototypeAST: " << std::endl;
@@ -747,7 +772,7 @@ class PrototypeAST : public StatementAST {
         for (ssize_t i = static_cast<int64_t>(args.size()) - 1; i >= 0; i--) {
             Identifier iden{args[i].second.value, args[i].first.value};
             program.declare(iden);
-            program.push({bvm::OPCODE::STORE, std::bit_cast<uint64_t>(program.getaddress(iden.name))});
+            program.push({bvm::OPCODE::STORE, std::bit_cast<uint64_t>(program.getaddress(iden.name, pkg_name))});
         }
     }
 };
@@ -794,9 +819,10 @@ class FunctionAST : public GlobalStatementAST {
     Token name;
     std::unique_ptr<PrototypeAST> proto;
     Token returnType;
+    std::string pkg_name;
     std::unique_ptr<BlockAST> body;
-    FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Token r, std::unique_ptr<BlockAST> b)
-        : name(n), proto(std::move(p)), returnType(r), body(std::move(b)) {}
+    FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Token r, std::unique_ptr<BlockAST> b, std::string pkg)
+        : name(n), proto(std::move(p)), returnType(r), body(std::move(b)), pkg_name(pkg) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "FunctionAST: " << std::endl;
@@ -809,12 +835,14 @@ class FunctionAST : public GlobalStatementAST {
         body->print(indent);
     }
     virtual void codegen(Program &program) override {
-        program.push_in_func(name.value);
+        std::string resolved_name = pkg_name + "." + name.value;
+        program.push_in_func(resolved_name);
         const bool push_scope = false;
 
         // kinda useless now but ok
+        // EDIT: i CANNOT remember what above comment was for :skull: (pretend ts is a skull)
         uint64_t ip = program.get_ip();
-        Function func{ip, name.value, returnType.value};
+        Function func{ip, resolved_name, returnType.value};
         program.declare_function(func);
         program.new_scope();
         proto->codegen(program);
@@ -922,9 +950,10 @@ class ForAST : public StatementAST {
   public:
     std::unique_ptr<StatementAST> init;
     std::unique_ptr<ExprAST> condition;
-    std::unique_ptr<ExprAST> update;
+    // i = i+1 and stuff doesnt work, so changed to statement
+    std::unique_ptr<StatementAST> update;
     std::unique_ptr<BlockAST> body;
-    ForAST(std::unique_ptr<StatementAST> init, std::unique_ptr<ExprAST> condition, std::unique_ptr<ExprAST> update,
+    ForAST(std::unique_ptr<StatementAST> init, std::unique_ptr<ExprAST> condition, std::unique_ptr<StatementAST> update,
            std::unique_ptr<BlockAST> body)
         : init(std::move(init)), condition(std::move(condition)), update(std::move(update)), body(std::move(body)) {}
     virtual void print(int indent = 0) override {
@@ -956,9 +985,9 @@ class ForAST : public StatementAST {
         program.push({bvm::OPCODE::JNC, {}});
         body->codegen(program, push_scope);
         update->codegen(program);
-        program.delete_scope();
         program.push({bvm::OPCODE::JMP, for_start});
         program[jnc].operands[0] = program.size();
+        program.delete_scope();
     }
 };
 
@@ -993,6 +1022,18 @@ class BreakContinueAST : public StatementAST {
         std::cout << "keyword: " << keyword << std::endl;
     }
     virtual void codegen(Program &program) override { throw std::runtime_error("break/continue not implemented"); }
+};
+class ImportAST : public StatementAST {
+  public:
+    std::string pkg;
+    std::string alias;
+    ImportAST(std::string pkg, std::string alias) : pkg(pkg), alias(alias) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "ImportAST: ";
+        std::cout << "import alias:" << alias << "package_name: " << pkg << std::endl;
+    }
+    virtual void codegen(Program &program) override {}
 };
 class PackageAST : public StatementAST {
   public:
