@@ -94,6 +94,7 @@ class Lexer {
     int64_t pos_char = 0;
 
   public:
+    Lexer() {}
     Lexer(const std::string &filename) {
         std::ifstream infile(filename);
         std::string line;

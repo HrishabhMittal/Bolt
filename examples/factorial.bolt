@@ -1,3 +1,5 @@
+package main
+
 function factorial(number i32) (i32) {
     if number == 0 {
         return 1;
@@ -6,5 +8,8 @@ function factorial(number i32) (i32) {
     }
 }
 function main() (i32) {
+    z := findValue(13)+x*y;
+    x := "Hello";
+    num := divideBy5(10);
     return factorial(5);
 }

@@ -1,8 +1,6 @@
+package main
+
+
 function divideBy5(number i32) (f32) {
     return f32(number)/f32(5);
-}
-
-function main() (i32) {
-    num := divideBy5(10);
-    return i32(num);
 }

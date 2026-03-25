@@ -130,10 +130,10 @@ class Parser {
     }
     std::unique_ptr<ExprAST> parseTypeCast() {
         auto cast_type = expect(TokenType::KEYWORD);
-        expect(TokenType::PUNCTUATOR,"(");
+        expect(TokenType::PUNCTUATOR, "(");
         auto expr = parseExpr();
-        expect(TokenType::PUNCTUATOR,")");
-        auto cast=std::make_unique<TypeCastAST>(std::move(expr),cast_type);
+        expect(TokenType::PUNCTUATOR, ")");
+        auto cast = std::make_unique<TypeCastAST>(std::move(expr), cast_type);
         return cast;
     }
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
@@ -331,13 +331,21 @@ class Parser {
         insideLoop--;
         return std::make_unique<ForAST>(std::move(init), std::move(cond), std::move(update), std::move(body));
     }
+    std::unique_ptr<PackageAST> parsePackage() {
+        expect(TokenType::KEYWORD, "package");
+        auto iden = expect(TokenType::IDENTIFIER);
+        return std::make_unique<PackageAST>(iden);
+    }
 
   public:
-    Parser(Lexer l) : l(std::move(l)) {}
+    Parser() {}
+    void newFile(const std::string &filename) { l = Lexer(filename); }
     std::unique_ptr<ProgramAST> parseProgram() {
         // std::cout<<"parsing program: "<<std::endl;
         auto program = std::make_unique<ProgramAST>();
         next();
+        // kinda weird? yeah but fits with the theme of the code
+        program->definePackage(parsePackage());
         while (currentToken.ttype != TokenType::TK_EOF) {
             program->addStatement(parseGlobalStatement());
         }

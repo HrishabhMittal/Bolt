@@ -1,3 +1,5 @@
+package main
+
 x:=17;
 
 function voidFunc() (void) {
@@ -15,7 +17,4 @@ function findValue(target i32) (i32) {
     }
     return i;
 }
-y:=25;
-function main() (i32) {
-    return findValue(13)+x*y;
-}
+y:=findValue(13);

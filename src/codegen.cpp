@@ -2,6 +2,7 @@
 #include "header.hpp"
 #include "opcode.hpp"
 #include "vm.hpp"
+#include <algorithm>
 #include <bit>
 #include <bvm.hpp>
 #include <cstddef>
@@ -84,13 +85,16 @@ class Program {
                 } else
                     function_code[j.name].code[j.ins].operands[0] = function_code[i.first].offset;
             }
+        const std::array<bvm::OPCODE, 9> jumps{bvm::OPCODE::JNC, bvm::OPCODE::JC,  bvm::OPCODE::JNE,
+                                               bvm::OPCODE::JE,  bvm::OPCODE::JGE, bvm::OPCODE::JGT,
+                                               bvm::OPCODE::JLE, bvm::OPCODE::JLT, bvm::OPCODE::JMP};
         for (auto &i : function_code)
             for (auto &j : i.second.code) {
-
-                // this doesnt cover other instructions but im not using them
-                // SO, this is a problem for future me :)))
-                if (j.op == bvm::OPCODE::JMP || j.op == bvm::OPCODE::JNC) {
-                    j.operands[0] += i.second.offset;
+                for (auto jump : jumps) {
+                    if (j.op == jump) {
+                        j.operands[0] += i.second.offset;
+                        break;
+                    }
                 }
                 code.push_back(j);
             }
@@ -144,9 +148,13 @@ class Program {
         scope.pop_back();
     }
     void declare_function(Function i) {
-        for (auto &j : funcs) {
-            if (i.name == j.first)
-                throw std::runtime_error("redaclaration of " + i.name + " in the same scope.");
+        // now that im forward declaring, rewrite their pointer on second declaration
+        if (funcs.count(i.name)) {
+            if (funcs[i.name].ip == UINT64_MAX) {
+                funcs[i.name].ip = i.ip;
+                return;
+            }
+            throw std::runtime_error("redaclaration of " + i.name + " in the same scope.");
         }
         funcs[i.name] = i;
     }
@@ -221,6 +229,7 @@ class ExprAST : public AST {
     virtual void print(int indent = 0) = 0;
     virtual void codegen(Program &program) = 0;
     virtual std::string evaltype(Program &program) = 0;
+    virtual std::vector<std::string> get_dependencies() = 0;
     virtual ~ExprAST() = default;
 };
 class TypeCastAST : public ExprAST {
@@ -238,6 +247,7 @@ class TypeCastAST : public ExprAST {
         std::cout << "converting: " << std::endl;
         arg->print();
     }
+    virtual std::vector<std::string> get_dependencies() override { return arg->get_dependencies(); }
     virtual std::string evaltype(Program &program) override { return cast_to.value; }
     virtual void codegen(Program &program) override {
         std::string argtype = arg->evaltype(program);
@@ -332,6 +342,12 @@ class BinaryExprAST : public ExprAST {
         std::cout << "op: " << (op) << std::endl;
         lhs->print(indent);
         rhs->print(indent);
+    }
+    virtual std::vector<std::string> get_dependencies() override {
+        auto ldeps = lhs->get_dependencies();
+        auto rdeps = rhs->get_dependencies();
+        ldeps.insert(ldeps.end(), rdeps.begin(), rdeps.end());
+        return ldeps;
     }
     virtual std::string evaltype(Program &program) override {
         auto ltype = lhs->evaltype(program);
@@ -465,6 +481,7 @@ class UnaryExprAST : public ExprAST {
         static auto retval = operand->evaltype(program);
         return retval;
     }
+    virtual std::vector<std::string> get_dependencies() override { return operand->get_dependencies(); }
     virtual void codegen(Program &program) override {
         auto retval = operand->evaltype(program);
         operand->codegen(program);
@@ -497,6 +514,7 @@ class BooleanExprAST : public ExprAST {
         printSpace(indent);
         std::cout << "bool: " << (boolean) << std::endl;
     }
+    virtual std::vector<std::string> get_dependencies() override { return {}; }
     virtual std::string evaltype(Program &program) override { return "bool"; }
     virtual void codegen(Program &program) override {
         bvm::Value v;
@@ -520,6 +538,7 @@ class NumberExprAST : public ExprAST {
         printSpace(indent);
         std::cout << "bool: " << (number) << std::endl;
     }
+    virtual std::vector<std::string> get_dependencies() override { return {}; }
     virtual std::string evaltype(Program &program) override {
         static auto vt = valuetype(number.value);
         if (vt == INT)
@@ -574,6 +593,7 @@ class StringExprAST : public ExprAST {
         printSpace(indent);
         std::cout << "string: " << str << std::endl;
     }
+    virtual std::vector<std::string> get_dependencies() override { return {}; }
     virtual std::string evaltype(Program &program) override { return "string"; }
     virtual void codegen(Program &program) override {
         uint64_t len = str.value.size() - 2;
@@ -595,6 +615,7 @@ class IdentifierExprAST : public ExprAST {
         printSpace(indent);
         std::cout << "identifier: " << (identifier) << std::endl;
     }
+    virtual std::vector<std::string> get_dependencies() override { return {identifier.value}; }
     virtual std::string evaltype(Program &program) override { return program.gettype(identifier.value); }
     virtual void codegen(Program &program) override {
         uint64_t ind = std::bit_cast<uint64_t>(program.getaddress(identifier.value));
@@ -616,6 +637,14 @@ class CallExprAST : public ExprAST {
         for (auto &&i : args) {
             i->print(indent);
         }
+    }
+    virtual std::vector<std::string> get_dependencies() override {
+        std::vector<std::string> deps;
+        for (auto &a : args) {
+            auto d = a->get_dependencies();
+            deps.insert(deps.end(), d.begin(), d.end());
+        }
+        return deps;
     }
     virtual std::string evaltype(Program &program) override {
         Function func = program.get_function(callee.value);
@@ -965,10 +994,23 @@ class BreakContinueAST : public StatementAST {
     }
     virtual void codegen(Program &program) override { throw std::runtime_error("break/continue not implemented"); }
 };
+class PackageAST : public StatementAST {
+  public:
+    std::string package_name;
+    PackageAST(Token name) : package_name(name.value) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "PackageAST: ";
+        std::cout << "package name: " << package_name << std::endl;
+    }
+    virtual void codegen(Program &program) override {}
+};
 class ProgramAST : public AST {
   public:
+    std::string package;
     std::vector<std::unique_ptr<GlobalStatementAST>> statements;
     ProgramAST() = default;
+    void definePackage(std::unique_ptr<PackageAST> pk) { package = pk->package_name; }
     void addStatement(std::unique_ptr<GlobalStatementAST> stmt) { statements.push_back(std::move(stmt)); }
     void print(int indent = 0) {
         printSpace(indent);
