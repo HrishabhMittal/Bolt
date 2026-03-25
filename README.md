@@ -3,7 +3,7 @@ Bolt is a programming langauge currently being written that runs on BVM (Bolt Vi
 
 ## Implemented Stuff
 - [X] Lexer
-- [ ] Pre-Processor
+- [X] Pre-Processor
 - [X] Parser
 - [X] Emitter
 
