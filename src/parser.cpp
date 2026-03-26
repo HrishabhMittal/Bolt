@@ -212,7 +212,7 @@ class Parser {
         return block;
     }
     std::unique_ptr<GlobalStatementAST> parseExternFunction() {
-        expect(TokenType::KEYWORD,"extern");
+        expect(TokenType::KEYWORD, "extern");
         expect(TokenType::KEYWORD, "function");
         Token name = expect(TokenType::IDENTIFIER);
         expect(TokenType::PUNCTUATOR, "(");
@@ -274,7 +274,7 @@ class Parser {
     }
     std::unique_ptr<StatementAST> parseJustExpr() {
         auto x = parseExpr();
-        expect(TokenType::PUNCTUATOR,";");
+        expect(TokenType::PUNCTUATOR, ";");
         return std::make_unique<JustExprAST>(std::move(x));
     }
     std::unique_ptr<StatementAST> parseStatement() {
@@ -404,6 +404,7 @@ class Parser {
             alias = pkg_name;
         return std::make_unique<ImportAST>(pkg_name, alias);
     }
+
   public:
     Parser() {}
     void newFile(const std::string &filename) { l = Lexer(filename); }

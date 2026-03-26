@@ -24,6 +24,7 @@ struct Identifier {
 struct Function {
     uint64_t ip;
     std::string name;
+    std::vector<std::string> argtypes;
     std::string ret_type;
     bool is_external = false;
 };
@@ -82,7 +83,7 @@ class Program {
                     throw std::runtime_error("function " + i.first + " is called but never declared");
                 }
                 if (funcs[i.first].is_external) {
-                    bvm::instruction& instr = (j.name == "") ? code[j.ins] : function_code[j.name].code[j.ins];
+                    bvm::instruction &instr = (j.name == "") ? code[j.ins] : function_code[j.name].code[j.ins];
                     instr.op = bvm::OPCODE::CALL_EXTERN;
                     uint64_t string_ptr = data_size();
                     data_push(i.first + '\0');
@@ -574,8 +575,13 @@ class NumberExprAST : public ExprAST {
     virtual std::vector<std::string> get_dependencies() override { return {}; }
     virtual std::string evaltype(Program &program) override {
         auto vt = valuetype(number.value);
-        if (vt == INT)
-            return "i32";
+        if (vt == INT) {
+            long long val = std::stoll(number.value);
+            if (val <= 2147483647LL && val >= -2147483648LL) {
+                return "i32";
+            }
+            return "i64";
+        }
         else if (vt == FLOAT)
             return "f32";
         else if (vt == DOUBLE)
@@ -691,11 +697,17 @@ class CallExprAST : public ExprAST {
         return func.ret_type;
     }
     virtual void codegen(Program &program) override {
-        for (auto &&i : args) {
-            i->codegen(program);
+        Function resolved_func = program.get_function(callee.value, pkg_name);
+        for (size_t i = 0; i < args.size(); i++) {
+            if (i >= resolved_func.argtypes.size()) {
+                throw std::runtime_error("not enough arguments provided");
+            }
+            if (args[i]->evaltype(program) != resolved_func.argtypes[i]) {
+                throw std::runtime_error("arguments in call list do not match the function signature.");
+            }
+            args[i]->codegen(program);
         }
         // Function func = program.get_function(callee.value);
-        Function resolved_func = program.get_function(callee.value, pkg_name);
         program.push_call(resolved_func.name);
         // program.push({bvm::OPCODE::CALL, {func.ip}});
     }
@@ -789,6 +801,12 @@ class PrototypeAST : public StatementAST {
             std::cout << i.first << " " << i.second << std::endl;
         }
     }
+    std::vector<std::string> type_list() {
+        std::vector<std::string> v;
+        for (auto i : args)
+            v.push_back(i.first.value);
+        return v;
+    }
     virtual void codegen(Program &program) override {
         if (args.size() == 0)
             return;
@@ -856,7 +874,7 @@ class ExternFunctionAST : public GlobalStatementAST {
     }
     virtual void codegen(Program &program) override {
         std::string resolved_name = pkg_name + "." + name.value;
-        program.declare_function({UINT64_MAX, resolved_name, returnType.value, true});
+        program.declare_function({UINT64_MAX, resolved_name, proto->type_list(), returnType.value, true});
     }
 };
 class FunctionAST : public GlobalStatementAST {
@@ -887,13 +905,13 @@ class FunctionAST : public GlobalStatementAST {
         // kinda useless now but ok
         // EDIT: i CANNOT remember what above comment was for :skull: (pretend ts is a skull)
         uint64_t ip = program.get_ip();
-        Function func{ip, resolved_name, returnType.value};
+        Function func{ip, resolved_name, proto->type_list(), returnType.value};
         program.declare_function(func);
         program.new_scope();
         proto->codegen(program);
         body->codegen(program, push_scope);
 
-        program.push({bvm::OPCODE::RET,{}});
+        program.push({bvm::OPCODE::RET, {}});
         // generates redundant instruction for function calls, but DO NOT remove it
         // the instruction is required in normal scope, just leave it be for now
         // optimisation comes later
@@ -1100,13 +1118,11 @@ class JustExprAST : public StatementAST {
 
   public:
     JustExprAST(std::unique_ptr<ExprAST> expr) : expr(std::move(expr)) {}
-    virtual void print(int indent=0) override {
+    virtual void print(int indent = 0) override {
         printSpace(indent);
-        std::cout<<"BLAH BLAH"<<std::endl;
+        std::cout << "BLAH BLAH" << std::endl;
     }
-    virtual void codegen(Program& program) override {
-        expr->codegen(program);
-    }
+    virtual void codegen(Program &program) override { expr->codegen(program); }
 };
 class ProgramAST : public AST {
   public:
