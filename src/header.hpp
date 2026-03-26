@@ -40,6 +40,79 @@ enum Value { DOUBLE, FLOAT, INT, BOOL, CHAR, STRING };
 
 enum class TokenType { TK_ERR, IDENTIFIER, KEYWORD, PUNCTUATOR, STRING, NUMBER, NEWLINE, TK_EOF };
 
+inline std::string resolve_string(std::string_view input) {
+    if (input.size() < 2)
+        return std::string(input);
+    if (input.front() == '"' && input.back() == '"') {
+        input.remove_prefix(1);
+        input.remove_suffix(1);
+    }
+    std::string out;
+    out.reserve(input.size());
+    for (size_t i = 0; i < input.size(); i++) {
+        if (input[i] == '\\' && i + 1 < input.size()) {
+            switch (input[++i]) {
+            case 'n':
+                out += '\n';
+                break;
+            case 't':
+                out += '\t';
+                break;
+            case 'r':
+                out += '\r';
+                break;
+            case 'v':
+                out += '\v';
+                break;
+            case 'b':
+                out += '\b';
+                break;
+            case 'f':
+                out += '\f';
+                break;
+            case 'a':
+                out += '\a';
+                break;
+            case '\\':
+                out += '\\';
+                break;
+            case '"':
+                out += '"';
+                break;
+            case '\'':
+                out += '\'';
+                break;
+            case '?':
+                out += '?';
+                break;
+            case 'x': {
+                if (i + 2 < input.size()) {
+                    std::string hex_str(input.substr(i + 1, 2));
+                    out += (char)std::stoi(hex_str, nullptr, 16);
+                    i += 2;
+                }
+                break;
+            }
+            case '0' ... '7': {
+                size_t len = 0;
+                while (len < 3 && i + len < input.size() && input[i + len] >= '0' && input[i + len] <= '7') {
+                    len++;
+                }
+                std::string oct_str(input.substr(i, len));
+                out += (char)std::stoi(oct_str, nullptr, 8);
+                i += len - 1;
+                break;
+            }
+            default:
+                out += input[i];
+                break;
+            }
+        } else {
+            out += input[i];
+        }
+    }
+    return out;
+}
 struct Token {
     TokenType ttype;
     std::string value;

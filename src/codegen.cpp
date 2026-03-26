@@ -622,11 +622,11 @@ class StringExprAST : public ExprAST {
     virtual std::vector<std::string> get_dependencies() override { return {}; }
     virtual std::string evaltype(Program &program) override { return "string"; }
     virtual void codegen(Program &program) override {
-        uint64_t len = str.value.size() - 2;
-        program.push({bvm::OPCODE::PUSH, {len}});
+        std::string actual_string = resolve_string(str.value);
+        program.push({bvm::OPCODE::PUSH, {actual_string.size()}});
         uint64_t data_ptr = program.data_size();
         program.push({bvm::OPCODE::STRING_FROM, {data_ptr}});
-        program.data_push(str.value.substr(1, len));
+        program.data_push(actual_string);
     }
 };
 
