@@ -892,6 +892,8 @@ class FunctionAST : public GlobalStatementAST {
         program.new_scope();
         proto->codegen(program);
         body->codegen(program, push_scope);
+
+        program.push({bvm::OPCODE::RET,{}});
         // generates redundant instruction for function calls, but DO NOT remove it
         // the instruction is required in normal scope, just leave it be for now
         // optimisation comes later
