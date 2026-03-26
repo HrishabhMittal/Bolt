@@ -272,6 +272,11 @@ class Parser {
         // return std::move(x);
         throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
+    std::unique_ptr<StatementAST> parseJustExpr() {
+        auto x = parseExpr();
+        expect(TokenType::PUNCTUATOR,";");
+        return std::make_unique<JustExprAST>(std::move(x));
+    }
     std::unique_ptr<StatementAST> parseStatement() {
         // std::cout<<"parsing statment at: ";
         // std::cout<<tokenToString(currentToken)<<std::endl;
@@ -290,9 +295,7 @@ class Parser {
         if (match(TokenType::IDENTIFIER) &&
             (matchnext(TokenType::PUNCTUATOR, ":=") || matchnext(TokenType::PUNCTUATOR, "=")))
             return parseDeclarationAssignment();
-        // auto x = parseExpr();
-        // expect(TokenType::PUNCTUATOR,";");
-        // return std::move(x);
+        return parseJustExpr();
         throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {

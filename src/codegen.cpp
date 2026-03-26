@@ -82,10 +82,11 @@ class Program {
                     throw std::runtime_error("function " + i.first + " is called but never declared");
                 }
                 if (funcs[i.first].is_external) {
-                    code[j.ins].op = bvm::OPCODE::CALL_EXTERN;
+                    bvm::instruction& instr = (j.name == "") ? code[j.ins] : function_code[j.name].code[j.ins];
+                    instr.op = bvm::OPCODE::CALL_EXTERN;
                     uint64_t string_ptr = data_size();
                     data_push(i.first + '\0');
-                    code[j.ins].operands[0] = string_ptr;
+                    instr.operands[0] = string_ptr;
                     continue;
                 }
                 if (j.name == "") {
@@ -107,8 +108,8 @@ class Program {
                 code.push_back(j);
             }
         bvm::program final_prog;
-        for (const auto& [name, func] : funcs) {
-            if (!func.is_external) { 
+        for (const auto &[name, func] : funcs) {
+            if (!func.is_external) {
                 final_prog.exported_functions[name] = func.ip + function_code[name].offset;
             }
         }
@@ -1089,6 +1090,21 @@ class PackageAST : public StatementAST {
         std::cout << "package name: " << package_name << std::endl;
     }
     virtual void codegen(Program &program) override {}
+};
+
+// i dont want to inherit statement in expr, thats it
+class JustExprAST : public StatementAST {
+    std::unique_ptr<ExprAST> expr;
+
+  public:
+    JustExprAST(std::unique_ptr<ExprAST> expr) : expr(std::move(expr)) {}
+    virtual void print(int indent=0) override {
+        printSpace(indent);
+        std::cout<<"BLAH BLAH"<<std::endl;
+    }
+    virtual void codegen(Program& program) override {
+        expr->codegen(program);
+    }
 };
 class ProgramAST : public AST {
   public:
