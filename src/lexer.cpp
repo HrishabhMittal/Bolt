@@ -1,16 +1,7 @@
 #include "header.hpp"
-#include <algorithm>
-#include <cctype>
-#include <cstdint>
-#include <fstream>
-#include <iostream>
-#include <ostream>
-#include <stdexcept>
-#include <string>
-#include <vector>
-
-Value valuetype(const std::string &s) {
+Value valuetype(Token t) {
     // std::cout<<"calc for: "<<s<<std::endl;
+    const std::string& s=t.value;
     if (s.front() == '"')
         return STRING;
     if (s == "true" || s == "false")
@@ -22,7 +13,7 @@ Value valuetype(const std::string &s) {
             return DOUBLE;
         return INT;
     }
-    throw std::runtime_error("Unrecognised literal: " + s);
+    t.error("Unrecognised literal: " + s);
 }
 double valueToDouble(const std::string &s) {
     double out = 0.0;

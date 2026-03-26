@@ -1,7 +1,24 @@
 #pragma once
+#include <algorithm>
+#include <bit>
+#include <bvm.hpp>
+#include <cctype>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <ios>
+#include <iostream>
+#include <list>
+#include <map>
+#include <memory>
 #include <ostream>
+#include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 inline std::string alone = "(){}[];,.";
 inline std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
@@ -9,7 +26,10 @@ inline std::vector<std::string> keywords = {"if",     "else",   "while",    "bre
                                             "return", "extern", "function", "import", "package",  "void", "bool",
                                             "string", "true",   "false",    "u8",     "u16",      "u32",  "u64",
                                             "i8",     "i16",    "i32",      "i64",    "f32",      "f64"};
-
+[[noreturn]] inline void error(const std::string &msg, int32_t exitcode = 1) {
+    std::cout << msg << std::endl;
+    std::exit(exitcode);
+}
 inline std::string repeat(const std::string &s, int i) {
     std::string str;
     for (int j = 0; j < i; j++)
@@ -26,6 +46,18 @@ struct Token {
     int64_t lineno;
     int64_t startindex;
     const std::string *line;
+    void printTokenUnderlined() {
+        if (line != nullptr) {
+            std::cout << "    " << *line << std::endl
+                      << "    " << repeat(" ", startindex) << repeat("^", value.size()) << std::endl;
+        }
+    }
+    [[noreturn]] void error(const std::string &msg) {
+        const std::string &safeline = (line == nullptr) ? std::string() : *line;
+        std::cerr << "At: " << value << std::endl;
+        printTokenUnderlined();
+        ::error(msg);
+    }
     // maybe i have to remove this if i run into problems later
     bool operator==(const char *c) { return c == value; }
 };
@@ -82,7 +114,7 @@ inline Value type(std::string type_str) {
         return DOUBLE;
     if (type_str == "string")
         return STRING;
-    throw std::runtime_error("Unrecognised Value: " + type_str);
+    error("Unrecognised Value: " + type_str);
 }
 inline std::string typeToStr(Value type) {
     if (type == BOOL)
@@ -97,5 +129,5 @@ inline std::string typeToStr(Value type) {
         return "DOUBLE";
     if (type == STRING)
         return "STRING";
-    throw std::runtime_error("Unrecognised Value Value");
+    error("Unrecognised Value Value");
 }

@@ -1,8 +1,5 @@
 #include "codegen.cpp"
 #include "header.hpp"
-#include <iostream>
-#include <memory>
-#include <string>
 
 class Parser {
     Lexer l;
@@ -33,15 +30,13 @@ class Parser {
     }
     Token expect(TokenType type, const std::string &val = "") {
         if (!match(type, val)) {
-            throw std::runtime_error("Unexpected token: \"" + currentToken.value + "\", at line: " +
-                                     std::to_string(currentToken.lineno) + "\n    " + *currentToken.line + "\n    " +
-                                     repeat(" ", currentToken.startindex) + repeat("^", currentToken.value.size()));
+            currentToken.error("Unexpected token: ");
         }
         Token tok = currentToken;
         next();
         return tok;
     }
-    void error(std::string s) { throw std::runtime_error(s); }
+    [[noreturn]] void error(std::string s) { ::error(s); }
     std::unique_ptr<ReturnAST> parseReturn() {
         if (!insideFunction)
             error("return encountered outside function");
@@ -118,7 +113,7 @@ class Parser {
             return std::make_unique<IdentifierExprAST>(id, current_package);
         }
 
-        throw std::runtime_error("Invalid value expression" + tokenToString(currentToken));
+        error("Invalid value expression" + tokenToString(currentToken));
     }
 
     std::unique_ptr<ExprAST> parseTerm() {
@@ -236,7 +231,7 @@ class Parser {
 
             return std::make_unique<GlobalDeclarationAST>(id, std::move(expr), current_package);
         }
-        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
+        currentToken.error("Unknown statement");
     }
     std::unique_ptr<StatementAST> parseDeclarationAssignment() {
         // std::cout<<"parsing dec/ass at: ";
@@ -256,7 +251,7 @@ class Parser {
             expect(TokenType::PUNCTUATOR, ";");
             return std::make_unique<AssignmentAST>(id, std::move(expr), current_package);
         }
-        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
+        currentToken.error("Unknown statement");
     }
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement() {
         // std::cout<<"parsing statment at: ";
@@ -270,7 +265,7 @@ class Parser {
         // auto x = parseExpr();
         // expect(TokenType::PUNCTUATOR,";");
         // return std::move(x);
-        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
+        currentToken.error("Unknown statement");
     }
     std::unique_ptr<StatementAST> parseJustExpr() {
         auto x = parseExpr();
@@ -296,7 +291,7 @@ class Parser {
             (matchnext(TokenType::PUNCTUATOR, ":=") || matchnext(TokenType::PUNCTUATOR, "=")))
             return parseDeclarationAssignment();
         return parseJustExpr();
-        throw std::runtime_error("Unknown statement at token: " + tokenToString(currentToken));
+        currentToken.error("Unknown statement");
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {
         // std::cout << "parsing proto: " << std::endl;

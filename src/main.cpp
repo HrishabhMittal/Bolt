@@ -1,8 +1,4 @@
 #include "emitter.cpp"
-#include <filesystem>
-#include <fstream>
-#include <ios>
-#include <string>
 void get_all_bolt_files(std::vector<std::string> &vec, const std::string &dir) {
     const std::string extension = ".bolt";
     if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {

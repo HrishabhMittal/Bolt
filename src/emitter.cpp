@@ -52,15 +52,15 @@ class Emitter {
         // doofus the dfs function (im going insane rn)
         std::function<void(const std::string &)> doofus = [&](const std::string &name) {
             if (state[name] == 1) {
-                throw std::runtime_error("Circular dependency detected in global variable: " + name);
+                error("Circular dependency detected in global variable: " + name);
             }
             if (state[name] == 2)
                 return;
 
             state[name] = 1;
 
-            auto glob = global_map[name];
-            auto deps = glob->expr->get_dependencies();
+            GlobalDeclarationAST *glob = global_map[name];
+            std::vector<std::string> deps = glob->expr->get_dependencies();
             for (const auto &dep : deps) {
                 if (global_map.count(dep)) {
                     doofus(dep);
@@ -71,16 +71,16 @@ class Emitter {
             sorted_globals.push_back(glob);
         };
 
-        for (auto g : globals) {
+        for (auto &g : globals) {
             std::string extended_name = g->pkg_name + "." + g->identifier.value;
             if (state[extended_name] == 0) {
                 doofus(extended_name);
             }
         }
-        for (auto g : sorted_globals) {
+        for (auto &g : sorted_globals) {
             g->codegen(program);
         }
-        for (auto f : functions) {
+        for (auto &f : functions) {
             f->codegen(program);
         }
         bvm::program out_prog = program.construct_full_code();

@@ -1,3 +1,6 @@
+CXX = g++
+CXXFLAGS = -std=c++23 -Os --static -flto -march=native
+INCLUDES = -Ibvm/include
 all:
 	mkdir -p build
-	g++ -std=c++23 src/main.cpp -o build/boltc -g -Ibvm/include
+	$(CXX) $(CXXFLAGS) $(INCLUDES) src/main.cpp -o build/boltc

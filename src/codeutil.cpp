@@ -1,9 +1,4 @@
 #include "lexer.cpp"
-#include <stdexcept>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
 std::vector<std::vector<std::string>> ops_by_precedence = {
     {"()", "[]", ".", "->"},
     {"++", "--", "+", "-", "!", "~", "*", "&"},
