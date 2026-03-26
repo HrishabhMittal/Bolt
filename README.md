@@ -1,33 +1,38 @@
-# Bolt: A Programming Language
-Bolt is a programming langauge currently being written that runs on BVM (Bolt Virtual Machine)
+### README.md
+# Bolt
 
-## Implemented Stuff
-- [X] Lexer
-- [X] Pre-Processor
-- [X] Parser
-- [X] Emitter
+Bolt is a statically-typed programming language running on the Bolt Virtual Machine (BVM). 
+This langauge takes heavy inspiration from syntax of Golang.
 
-# To Do
+## Features
+- BVM bytecode execution
+- package & import system
+- strong typing with inbuilt `u/i8-64`, `f32`, `f64`, `bool`, `string`
+- `extern` functions for linking to byteCode implementations
 
-# High Priority
-- [X] complete migration from NASM to BVM bytecode
-- [X] global variable support
-- [X] introducing types like u/i8-64, f32, f64
-- [X] string support
-- [X] type casting support
-- [X] package keyword
-- [X] patching multiple files into single bytecode file
-- [X] import keyword
-- [X] defining internal functions and calling their bytecode
-- [X] add `print()` to actually print stuff
-- [ ] add arrays
-- [ ] build stdlib
-- [ ] structs with methods
-- [ ] enums
-- [ ] generics
-- [ ] anonymous functions
+## Quick Start
+**Build:**
+```bash
+git clone https://github.com/HrishabhMittal/bvm
+./build.sh
+```
 
-# Low Priority
-- [ ] change syntax
-- [ ] better testcases
-- [ ] make everything a class
+**Run Example:**
+```bash
+./run.sh
+```
+
+## Syntax Example
+note that running the example below currently required `fmt/` folder to be in the compiling directory,
+and running it requires you to provide the stdlib implementations of print functions dynamically.
+See `run.sh` for more details.
+
+```bolt
+package main
+import "fmt"
+
+function main() (i32) {
+    fmt.printstring("Hello World\n")
+    return 0
+}
+```
