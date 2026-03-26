@@ -8,17 +8,35 @@ class Parser {
     int insideLoop = 0;
     std::string current_package;
     std::map<std::string, std::string> current_imports;
-    void next() {
-        do {
-            currentToken = l.gettoken();
-        } while (currentToken.ttype == TokenType::NEWLINE);
-    }
+    void next() { currentToken = l.gettoken(); }
     bool matchnext(TokenType type, const std::string &val = "") {
-        Token x = l.peektoken();
-        return x.ttype == type && (val.empty() || x.value == val);
+        auto c = l.get_checkpoint();
+        Token store = currentToken;
+        next();
+        bool ans = match(type, val);
+        l.restore(c);
+        currentToken = store;
+        return ans;
     }
     bool match(TokenType type, const std::string &val = "") {
-        return currentToken.ttype == type && (val.empty() || currentToken.value == val);
+        if (currentToken.ttype == type && (val.empty() || currentToken.value == val)) {
+            return true;
+        }
+        if (type != TokenType::NEWLINE && currentToken.ttype == TokenType::NEWLINE) {
+            auto cp = l.get_checkpoint();
+            Token store = currentToken;
+            while (currentToken.ttype == TokenType::NEWLINE) {
+                next();
+            }
+            if (currentToken.ttype == type && (val.empty() || currentToken.value == val)) {
+                return true;
+            } else {
+                l.restore(cp);
+                currentToken = store;
+                return false;
+            }
+        }
+        return false;
     }
     bool match_binop() {
         for (auto &i : binops_by_precedence)
@@ -30,42 +48,41 @@ class Parser {
     }
     Token expect(TokenType type, const std::string &val = "") {
         if (!match(type, val)) {
-            currentToken.error("Unexpected token: ");
+            currentToken.error("Unexpected token");
         }
         Token tok = currentToken;
         next();
         return tok;
     }
-    [[noreturn]] void error(std::string s) { ::error(s); }
     std::unique_ptr<ReturnAST> parseReturn() {
         if (!insideFunction)
             error("return encountered outside function");
-        // std::cout<<"parsing return: "<<std::endl;
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing return: " << std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         Token returnToken = expect(TokenType::KEYWORD, "return");
 
-        if (!match(TokenType::PUNCTUATOR, ";")) {
+        if (!match(TokenType::NEWLINE)) {
             auto expr = parseExpr();
-            expect(TokenType::PUNCTUATOR, ";");
+            expect(TokenType::NEWLINE);
             return std::make_unique<ReturnAST>(std::move(expr));
         }
 
-        expect(TokenType::PUNCTUATOR, ";");
+        expect(TokenType::NEWLINE);
         return std::make_unique<ReturnAST>(nullptr);
     }
     std::unique_ptr<BreakContinueAST> parseBreakContinue() {
         if (!insideLoop)
             error("break/continue found outside loop");
-        // std::cout<<"parsing breakcont at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing breakcont at: ";
+        // std::cout << tokenToString(currentToken) << std::endl;
         Token keyword = currentToken;
         next();
-        expect(TokenType::PUNCTUATOR, ";");
+        expect(TokenType::NEWLINE);
         return std::make_unique<BreakContinueAST>(keyword);
     }
     std::unique_ptr<ExprAST> parseValue() {
-        // std::cout<<"parsing value at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing value at: ";
+        // std::cout << tokenToString(currentToken) << std::endl;
         if (match(TokenType::KEYWORD, "false") || match(TokenType::KEYWORD, "true"))
             return std::make_unique<BooleanExprAST>(expect(TokenType::KEYWORD));
         if (match(TokenType::NUMBER))
@@ -112,14 +129,14 @@ class Parser {
             //            }
             return std::make_unique<IdentifierExprAST>(id, current_package);
         }
-
-        error("Invalid value expression" + tokenToString(currentToken));
+        currentToken.error("Invalid value expression");
     }
 
     std::unique_ptr<ExprAST> parseTerm() {
-        // std::cout<<"parsing term at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
-        if (match(TokenType::PUNCTUATOR, "-") || match(TokenType::PUNCTUATOR, "!")) {
+        // std::cout << "parsing term at: ";
+        // std::cout << currentToken << std::endl;
+        if (match(TokenType::PUNCTUATOR, "-") || match(TokenType::PUNCTUATOR, "!") ||
+            match(TokenType::PUNCTUATOR, "+")) {
             Token op = currentToken;
             next();
             auto operand = parseTerm();
@@ -129,13 +146,13 @@ class Parser {
     }
 
     std::unique_ptr<ExprAST> parseParenExpr() {
-        // std::cout<<"parsing parentexpr at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing parentexpr at: ";
+        // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::PUNCTUATOR, "(");
         auto expr = parseExpr();
         expect(TokenType::PUNCTUATOR, ")");
-        // std::cout<<"parsing parentexpr complete at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing parentexpr complete at: ";
+        // std::cout << tokenToString(currentToken) << std::endl;
         return expr;
     }
     int getOpPrecedence() {
@@ -160,6 +177,7 @@ class Parser {
         return cast;
     }
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
+        // std::cout << "ExprAST at " << currentToken << std::endl;
         std::unique_ptr<ExprAST> lhs;
         // run into problems bcoz, expr thinks "false" is a typecast
         // hacky solution for now, not proud of it
@@ -196,12 +214,14 @@ class Parser {
     //     std::make_unique<BinaryExprAST>(std::move(lhs),op,std::move(rhs));
     // }
     std::unique_ptr<BlockAST> parseBlock() {
-        // std::cout<<"parsing block at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing block at: ";
+        // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::PUNCTUATOR, "{");
         auto block = std::make_unique<BlockAST>();
         while (!match(TokenType::PUNCTUATOR, "}")) {
+            // std::cout << "going for another" << std::endl;
             block->addStatement(parseStatement());
+            // std::cout << "added statement" << std::endl;
         }
         expect(TokenType::PUNCTUATOR, "}");
         return block;
@@ -216,46 +236,45 @@ class Parser {
         expect(TokenType::PUNCTUATOR, "(");
         Token returnType = expect(TokenType::KEYWORD);
         expect(TokenType::PUNCTUATOR, ")");
-        expect(TokenType::PUNCTUATOR, ";");
+        expect(TokenType::NEWLINE);
         return std::make_unique<ExternFunctionAST>(name, std::move(proto), returnType, current_package);
     }
     std::unique_ptr<GlobalStatementAST> parseGlobalDeclaration() {
 
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         Token id = currentToken;
         next();
         if (match(TokenType::PUNCTUATOR, ":=")) {
             next();
             auto expr = parseExpr();
-            expect(TokenType::PUNCTUATOR, ";");
-
+            expect(TokenType::NEWLINE);
             return std::make_unique<GlobalDeclarationAST>(id, std::move(expr), current_package);
         }
-        currentToken.error("Unknown statement");
+        currentToken.error("Unknown global declaration statement");
     }
     std::unique_ptr<StatementAST> parseDeclarationAssignment() {
-        // std::cout<<"parsing dec/ass at: ";
+        // std::cout << "parsing dec/ass at: ";
 
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         Token id = currentToken;
         next();
         if (match(TokenType::PUNCTUATOR, ":=")) {
             next();
             auto expr = parseExpr();
-            expect(TokenType::PUNCTUATOR, ";");
+            expect(TokenType::NEWLINE);
 
             return std::make_unique<DeclarationAST>(id, std::move(expr), current_package);
         } else if (match(TokenType::PUNCTUATOR, "=")) {
             next();
             auto expr = parseExpr();
-            expect(TokenType::PUNCTUATOR, ";");
+            expect(TokenType::NEWLINE);
             return std::make_unique<AssignmentAST>(id, std::move(expr), current_package);
         }
-        currentToken.error("Unknown statement");
+        currentToken.error("Unknown declaration statement");
     }
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement() {
-        // std::cout<<"parsing statment at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing statment at: ";
+        // std::cout << tokenToString(currentToken) << std::endl;
         if (match(TokenType::KEYWORD, "function"))
             return parseFunction();
         if (match(TokenType::KEYWORD, "extern"))
@@ -265,33 +284,42 @@ class Parser {
         // auto x = parseExpr();
         // expect(TokenType::PUNCTUATOR,";");
         // return std::move(x);
-        currentToken.error("Unknown statement");
+        currentToken.error("Unknown global statement");
     }
     std::unique_ptr<StatementAST> parseJustExpr() {
+        // std::cout << "parsing justexpr at: ";
+        // std::cout << currentToken << std::endl;
         auto x = parseExpr();
-        expect(TokenType::PUNCTUATOR, ";");
+        expect(TokenType::NEWLINE);
         return std::make_unique<JustExprAST>(std::move(x));
     }
     std::unique_ptr<StatementAST> parseStatement() {
-        // std::cout<<"parsing statment at: ";
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing statment at: ";
+        // std::cout << currentToken << std::endl;
         if (match(TokenType::PUNCTUATOR, "{"))
             return parseBlock();
+        // std::cout << "not scope " << currentToken << std::endl;
         if (match(TokenType::KEYWORD, "if"))
             return parseConditional();
+        // std::cout << "not if " << currentToken << std::endl;
         if (match(TokenType::KEYWORD, "while"))
             return parseWhile();
+        // std::cout << "not while " << currentToken << std::endl;
         if (match(TokenType::KEYWORD, "for"))
             return parseFor();
+        // std::cout << "not for " << currentToken << std::endl;
         if (insideFunction && match(TokenType::KEYWORD, "return"))
             return parseReturn();
-        if (insideLoop && match(TokenType::KEYWORD, "break") || match(TokenType::KEYWORD, "continue"))
+        // std::cout << "not return " << currentToken << std::endl;
+        if (insideLoop && (match(TokenType::KEYWORD, "break") || match(TokenType::KEYWORD, "continue")))
             return parseBreakContinue();
+        // std::cout << "not bc " << currentToken << std::endl;
         if (match(TokenType::IDENTIFIER) &&
             (matchnext(TokenType::PUNCTUATOR, ":=") || matchnext(TokenType::PUNCTUATOR, "=")))
             return parseDeclarationAssignment();
+        // std::cout << "not da " << currentToken << std::endl;
         return parseJustExpr();
-        currentToken.error("Unknown statement");
+        currentToken.error("Unknown expr statement");
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {
         // std::cout << "parsing proto: " << std::endl;
@@ -310,8 +338,8 @@ class Parser {
         return std::make_unique<PrototypeAST>(std::move(args), current_package);
     }
     std::unique_ptr<FunctionAST> parseFunction() {
-        // std::cout<<"parsing function: "<<std::endl;
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing function: " << std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "function");
         Token name = expect(TokenType::IDENTIFIER);
         expect(TokenType::PUNCTUATOR, "(");
@@ -327,8 +355,8 @@ class Parser {
         return std::make_unique<FunctionAST>(name, std::move(proto), returnType, std::move(body), current_package);
     }
     std::unique_ptr<StatementAST> parseConditional() {
-        // std::cout<<"parsing condition: "<<std::endl;
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing condition: " << std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "if");
         auto ifCond = parseExpr();
         auto ifBlock = parseBlock();
@@ -349,8 +377,8 @@ class Parser {
         return condAST;
     }
     std::unique_ptr<StatementAST> parseWhile() {
-        // std::cout<<"parsing while: "<<std::endl;
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing while: " << std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "while");
         auto cond = parseExpr();
         insideLoop++;
@@ -367,12 +395,30 @@ class Parser {
         auto update = std::make_unique<AssignmentAST>(update_id, std::move(update_expr), current_package);
         return update;
     }
+    std::unique_ptr<StatementAST> parseForDeclarationAssignment() {
+        // std::cout << "parsing dec/ass at: ";
+
+        // std::cout << tokenToString(currentToken) << std::endl;
+        Token id = currentToken;
+        next();
+        if (match(TokenType::PUNCTUATOR, ":=")) {
+            next();
+            auto expr = parseExpr();
+            return std::make_unique<DeclarationAST>(id, std::move(expr), current_package);
+        } else if (match(TokenType::PUNCTUATOR, "=")) {
+            next();
+            auto expr = parseExpr();
+            return std::make_unique<AssignmentAST>(id, std::move(expr), current_package);
+        }
+        currentToken.error("Unknown for decl statement");
+    }
     std::unique_ptr<StatementAST> parseFor() {
-        // std::cout<<"parsing for: "<<std::endl;
-        // std::cout<<tokenToString(currentToken)<<std::endl;
+        // std::cout << "parsing for: " << std::endl;
+        // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "for");
         expect(TokenType::PUNCTUATOR, "(");
-        auto init = parseDeclarationAssignment();
+        auto init = parseForDeclarationAssignment();
+        expect(TokenType::PUNCTUATOR, ";");
         auto cond = parseExpr();
         expect(TokenType::PUNCTUATOR, ";");
         auto update = parseAssignmentNoSemicolon();
@@ -404,7 +450,7 @@ class Parser {
     Parser() {}
     void newFile(const std::string &filename) { l = Lexer(filename); }
     std::unique_ptr<ProgramAST> parseProgram() {
-        // std::cout<<"parsing program: "<<std::endl;
+        // std::cout << "parsing program: " << std::endl;
         auto program = std::make_unique<ProgramAST>();
         next();
         // kinda weird? yeah but fits with the theme of the code
@@ -417,7 +463,7 @@ class Parser {
             auto imp = parseImport();
             current_imports[imp->alias] = imp->pkg;
         }
-        while (currentToken.ttype != TokenType::TK_EOF) {
+        while (!match(TokenType::TK_EOF)) {
             program->addStatement(parseGlobalStatement());
         }
         return program;

@@ -1,7 +1,7 @@
 #include "header.hpp"
 Value valuetype(Token t) {
     // std::cout<<"calc for: "<<s<<std::endl;
-    const std::string& s=t.value;
+    const std::string &s = t.value;
     if (s.front() == '"')
         return STRING;
     if (s == "true" || s == "false")
@@ -93,6 +93,19 @@ class Lexer {
             data.push_back(line + '\n');
         }
     }
+    struct checkpoint {
+        int64_t line;
+        int64_t char_pos;
+    };
+
+    checkpoint get_checkpoint() { 
+        return {pos_line, pos_char}; 
+    }
+    
+    void restore(checkpoint cp) { 
+        pos_line = cp.line; 
+        pos_char = cp.char_pos; 
+    }
     Token peektoken() {
         int64_t p_line = pos_line;
         int64_t p_char = pos_char;
@@ -102,17 +115,12 @@ class Lexer {
         return out;
     }
     Token gettoken() {
-        Token t = _gettoken();
-        // std::cout << t << std::endl;
-        return t;
-    }
-    Token _gettoken() {
         Token t = __gettoken();
         if (t.value == "#") {
             while (t.ttype != TokenType::NEWLINE && t.ttype != TokenType::TK_EOF) {
                 t = __gettoken();
             }
-            return _gettoken();
+            return gettoken();
         }
         return t;
     }

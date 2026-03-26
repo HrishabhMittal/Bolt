@@ -1,7 +1,7 @@
 package fmt
 
-extern function printi32(n i32) (void);
-extern function printi64(n i64) (void);
-extern function printf32(n f32) (void);
-extern function printf64(n f64) (void);
-extern function printstring(s string) (void);
+extern function printi32(n i32) (void)
+extern function printi64(n i64) (void)
+extern function printf32(n f32) (void)
+extern function printf64(n f64) (void)
+extern function printstring(s string) (void)

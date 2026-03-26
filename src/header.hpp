@@ -28,6 +28,7 @@ inline std::vector<std::string> keywords = {"if",     "else",   "while",    "bre
                                             "i8",     "i16",    "i32",      "i64",    "f32",      "f64"};
 [[noreturn]] inline void error(const std::string &msg, int32_t exitcode = 1) {
     std::cout << msg << std::endl;
+    throw std::runtime_error("yuh"); // for debugging this is pretty good bcoz gdb gives call stack on backtrace
     std::exit(exitcode);
 }
 inline std::string repeat(const std::string &s, int i) {
@@ -113,31 +114,9 @@ inline std::string resolve_string(std::string_view input) {
     }
     return out;
 }
-struct Token {
-    TokenType ttype;
-    std::string value;
-    int64_t lineno;
-    int64_t startindex;
-    const std::string *line;
-    void printTokenUnderlined() {
-        if (line != nullptr) {
-            std::cout << "    " << *line << std::endl
-                      << "    " << repeat(" ", startindex) << repeat("^", value.size()) << std::endl;
-        }
-    }
-    [[noreturn]] void error(const std::string &msg) {
-        const std::string &safeline = (line == nullptr) ? std::string() : *line;
-        std::cerr << "At: " << value << std::endl;
-        printTokenUnderlined();
-        ::error(msg);
-    }
-    // maybe i have to remove this if i run into problems later
-    bool operator==(const char *c) { return c == value; }
-};
-inline bool operator==(const Token &t1, const Token &t2) { return t1.ttype == t2.ttype && t1.value == t2.value; }
-inline std::string tokenToString(const Token &tok) {
+inline std::string tokenTypeToStr(TokenType tt) {
     std::string typeStr;
-    switch (tok.ttype) {
+    switch (tt) {
     case TokenType::IDENTIFIER:
         typeStr = "IDENTIFIER";
         break;
@@ -163,8 +142,36 @@ inline std::string tokenToString(const Token &tok) {
         typeStr = "UNKNOWN";
         break;
     }
+    return typeStr;
+}
+struct Token {
+    TokenType ttype;
+    std::string value;
+    int64_t lineno;
+    int64_t startindex;
+    const std::string *line;
+    void printTokenUnderlined() {
+        if (line != nullptr) {
+            std::cout << "    " << *line << std::endl
+                      << "    " << repeat(" ", startindex) << repeat("^", value.size()) << std::endl;
+        } else {
+            std::cout << value << std::endl;
+        }
+    }
+    [[noreturn]] void error(const std::string &msg) {
+        const std::string &safeline = (line == nullptr) ? std::string() : *line;
+        std::cerr << "At: " << std::endl;
+        printTokenUnderlined();
+        std::cout<<"token of type: "<<tokenTypeToStr(ttype)<<std::endl;
+        ::error(msg);
+    }
+    // maybe i have to remove this if i run into problems later
+    bool operator==(const char *c) { return c == value; }
+};
+inline bool operator==(const Token &t1, const Token &t2) { return t1.ttype == t2.ttype && t1.value == t2.value; }
+inline std::string tokenToString(const Token &tok) {
 
-    return "Token(" + typeStr + ", value='" + tok.value + "')";
+    return "Token(" + tokenTypeToStr(tok.ttype) + ", value='" + tok.value + "')";
 }
 inline std::ostream &operator<<(std::ostream &out, Token t) {
     // out<<"Token(type:"<<(int)t.ttype<<", value:"<<t.value<<",
