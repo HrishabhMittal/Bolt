@@ -1,0 +1,19 @@
+package main
+import "fmt"
+import "mathlib"
+
+function printSome(n f32,m f64) (void) {
+    fmt.printf32(n)
+    fmt.printstring("\n")
+    fmt.printf64(m)
+    fmt.printstring("\n")
+}
+
+function main() (i32) {
+    fmt.printstring("Hello World\n")
+    fmt.printi32(mathlib.fibonacci(5))
+    fmt.printstring("\n")
+    fmt.printi32(mathlib.factorial(5))
+    fmt.printstring("\n")
+    printSome(f32(0.5),0.6)
+}

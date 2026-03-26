@@ -1,17 +1,17 @@
 package mathlib
 
 function add(a i32, b i32) (i32) {
-    return a + b;
+    return a + b
 }
 
 function subFloat(a f32, b f32) (f32) {
-    return a - b;
+    return a - b
 }
 
 function isEven(n i32) (bool) {
     if n % 2 == 0 {
-        return true;
+        return true
     } else {
-        return false;
+        return false
     }
 }
