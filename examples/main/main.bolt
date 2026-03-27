@@ -10,10 +10,22 @@ function printSome(n f32,m f64) (void) {
 }
 
 function main() (i32) {
-    fmt.printstring("Hello World\n")
     fmt.printi32(mathlib.fibonacci(5))
     fmt.printstring("\n")
+
     fmt.printi32(mathlib.factorial(5))
     fmt.printstring("\n")
-    printSome(f32(0.5),0.6)
+
+    arr := []i32{0,1,2,3,4,5,6}
+    fmt.printi32(arr[3])
+    fmt.printstring("\n")
+
+    fmt.printi32(arr[4])
+    fmt.printstring("\n")
+
+    arr[4]=5
+
+    fmt.printi32(arr[4])
+    fmt.printstring("\n")
+    return 120
 }

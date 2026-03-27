@@ -2,7 +2,43 @@
 #include "header.hpp"
 #include "opcode.hpp"
 #include "vm.hpp"
+bool type_is_unsigned(const std::string &type) {
+    return type[0] != 'i'; // hacky but works for now
+}
+int32_t get_type_size(const std::string &s) {
+    if (s == "i32" || s == "u32" || s == "f32")
+        return 4;
+    else if (s == "i8" || s == "u8")
+        return 1;
+    else if (s == "i16" || s == "u16")
+        return 2;
+    else
+        return 8;
+}
+bvm::OPCODE load_type(int size, bool is_unsigned) {
+    if (size == 1) {
+        return is_unsigned ? bvm::OPCODE::U8_ALOAD : bvm::OPCODE::I8_ALOAD;
+    } else if (size == 2) {
+        return is_unsigned ? bvm::OPCODE::U16_ALOAD : bvm::OPCODE::I16_ALOAD;
+    } else if (size == 4) {
+        return is_unsigned ? bvm::OPCODE::U32_ALOAD : bvm::OPCODE::I32_ALOAD;
+    } else if (size == 8) {
+        return bvm::OPCODE::I64_ALOAD;
+    }
+    error("Unsupported load size or unreachable code reached.");
+}
 
+bvm::OPCODE store_type(int size) {
+    if (size == 1)
+        return bvm::OPCODE::I8_ASTORE;
+    else if (size == 2)
+        return bvm::OPCODE::I16_ASTORE;
+    else if (size == 4)
+        return bvm::OPCODE::I32_ASTORE;
+    else if (size == 8)
+        return bvm::OPCODE::I64_ASTORE;
+    error("unreachable code reached, crazy.");
+}
 struct Identifier {
     std::string name;
     std::string type;
@@ -700,6 +736,99 @@ class CallExprAST : public ExprAST {
     }
 };
 
+class ArrayIndexedAST : public ExprAST {
+
+  public:
+    std::unique_ptr<IdentifierExprAST> array;
+    std::unique_ptr<ExprAST> index;
+    ArrayIndexedAST(std::unique_ptr<IdentifierExprAST> array, std::unique_ptr<ExprAST> index)
+        : array(std::move(array)), index(std::move(index)) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "ArrayIndexedAST: " << std::endl;
+        indent += 2;
+        printSpace(indent);
+        std::cout << "array: " << std::endl;
+        array->print(indent);
+        printSpace(indent);
+        std::cout << "index: " << std::endl;
+        index->print(indent);
+    }
+    virtual std::vector<std::string> get_dependencies() override {
+        std::vector<std::string> deps;
+        std::vector<std::string> d = array->get_dependencies();
+        deps.insert(deps.end(), d.begin(), d.end());
+        d = index->get_dependencies();
+        deps.insert(deps.end(), d.begin(), d.end());
+        return deps;
+    }
+    virtual std::string evaltype(Program &program) override {
+        std::string array_type = array->evaltype(program);
+        if (array_type.substr(0, 2) != "[]")
+            error("tried to index non array type");
+        return array_type.substr(2);
+    }
+    virtual void codegen(Program &program) override {
+        std::string type = evaltype(program);
+        array->codegen(program);
+        std::string index_type = index->evaltype(program);
+        if (index_type != "i32")
+            error("tried to index with type other than i32");
+        index->codegen(program);
+        program.push({load_type(get_type_size(type), type_is_unsigned(type))});
+    }
+};
+class ArrayExprAST : public ExprAST {
+
+  public:
+    Token type;
+    std::unique_ptr<NumberExprAST> size;
+    std::vector<std::unique_ptr<ExprAST>> args;
+    ArrayExprAST(Token t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a)
+        : type(t), args(std::move(a)), size(std::move(size)) {}
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "CallExprAST: " << std::endl;
+        indent += 2;
+        printSpace(indent);
+        std::cout << "array of: " << type << std::endl;
+        for (auto &&i : args) {
+            i->print(indent);
+        }
+    }
+    virtual std::vector<std::string> get_dependencies() override {
+        std::vector<std::string> deps;
+        for (auto &a : args) {
+            std::vector<std::string> d = a->get_dependencies();
+            deps.insert(deps.end(), d.begin(), d.end());
+        }
+        return deps;
+    }
+    virtual std::string evaltype(Program &program) override { return "[]" + type.value; }
+    virtual void codegen(Program &program) override {
+        int32_t type_size = get_type_size(type.value);
+        uint64_t val;
+        if (size == nullptr)
+            val = type_size * args.size();
+        else
+            val = std::stoll(size->number.value) * type_size;
+        if (size != nullptr && (size->evaltype(program) != "i32"))
+            size->number.error("size of type " + size->evaltype(program) +
+                               " cannot be used as size of array of type i32");
+        if (val < type_size * args.size())
+            size->number.error("size too small to hold all elements.");
+        program.push({bvm::OPCODE::PUSH, {val}});
+        program.push({bvm::OPCODE::MALLOC, {}});
+        uint64_t index = 0;
+        for (auto &&i : args) {
+            program.push({bvm::OPCODE::DUP});
+            program.push({bvm::OPCODE::PUSH, {index}});
+            i->codegen(program);
+            program.push({store_type(type_size), {}});
+            index++;
+        }
+    }
+};
 class GlobalDeclarationAST : public GlobalStatementAST {
   public:
     Token identifier;
@@ -747,13 +876,15 @@ class DeclarationAST : public StatementAST {
     }
 };
 
+// mark
 class AssignmentAST : public StatementAST {
   public:
     Token identifier;
+    std::unique_ptr<ExprAST> index;
     std::unique_ptr<ExprAST> expr;
     std::string pkg_name;
-    AssignmentAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg)
-        : pkg_name(pkg), identifier(id), expr(std::move(e)) {}
+    AssignmentAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, std::unique_ptr<ExprAST> index = nullptr)
+        : pkg_name(pkg), identifier(id), expr(std::move(e)), index(std::move(index)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "AssignmentAST: " << std::endl;
@@ -763,14 +894,28 @@ class AssignmentAST : public StatementAST {
         expr->print(indent);
     }
     virtual void codegen(Program &program) override {
-        std::string type = expr->evaltype(program);
+        std::string expr_type = expr->evaltype(program);
         std::string iden_type = program.gettype(identifier.value, pkg_name);
-        if (type != iden_type) {
-            error("attempt to assign " + type + " to " + identifier.value + " of type " + iden_type +
-                                     " failed.");
+        if (iden_type.substr(0, 2) == "[]" && index != nullptr) {
+            program.push(
+                {bvm::OPCODE::LOAD, {std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name))}});
+            std::string index_type = index->evaltype(program);
+            if (index_type != "i32")
+                error("array index is not of value i32");
+            index->codegen(program);
+            std::string element_type = iden_type.substr(2);
+            if (element_type != expr_type)
+                error("cannot assign value of type " + expr_type + " to " + element_type);
+            expr->codegen(program);
+            program.push({store_type(get_type_size(element_type)), {}});
+        } else {
+            if (expr_type != iden_type) {
+                error("attempt to assign " + expr_type + " to " + identifier.value + " of type " + iden_type + " failed.");
+            }
+            expr->codegen(program);
+            program.push(
+                {bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name))}});
         }
-        expr->codegen(program);
-        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name))}});
     }
 };
 
@@ -1111,6 +1256,7 @@ class JustExprAST : public StatementAST {
     }
     virtual void codegen(Program &program) override { expr->codegen(program); }
 };
+
 class ProgramAST : public AST {
   public:
     std::string package;

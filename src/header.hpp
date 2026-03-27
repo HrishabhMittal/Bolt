@@ -28,7 +28,7 @@ inline std::vector<std::string> keywords = {"if",     "else",   "while",    "bre
                                             "i8",     "i16",    "i32",      "i64",    "f32",      "f64"};
 [[noreturn]] inline void error(const std::string &msg, int32_t exitcode = 1) {
     std::cout << msg << std::endl;
-    throw std::runtime_error("yuh"); // for debugging this is pretty good bcoz gdb gives call stack on backtrace
+    throw std::runtime_error("debug runtime error"); // for debugging this is pretty good bcoz gdb gives call stack on backtrace
     std::exit(exitcode);
 }
 inline std::string repeat(const std::string &s, int i) {

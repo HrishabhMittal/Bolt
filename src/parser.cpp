@@ -1,5 +1,6 @@
 #include "codegen.cpp"
 #include "header.hpp"
+#include <algorithm>
 
 class Parser {
     Lexer l;
@@ -114,19 +115,13 @@ class Parser {
                 }
                 expect(TokenType::PUNCTUATOR, ")");
                 return std::make_unique<CallExprAST>(id, std::move(args), current_package);
+            } else if (match(TokenType::PUNCTUATOR, "[")) {
+                next();
+                std::unique_ptr<ExprAST> index = parseExpr();
+                expect(TokenType::PUNCTUATOR, "]");
+                auto iden = std::make_unique<IdentifierExprAST>(id, current_package);
+                return std::make_unique<ArrayIndexedAST>(std::move(iden), std::move(index));
             }
-            // holy bugs
-            //            if (match(TokenType::PUNCTUATOR, "(")) {
-            //                next();
-            //                std::vector<std::unique_ptr<ExprAST>> args;
-            //                if (!match(TokenType::PUNCTUATOR, ")")) {
-            //                    do {
-            //                        args.push_back(parseExpr());
-            //                    } while (match(TokenType::PUNCTUATOR, ","));
-            //                }
-            //                expect(TokenType::PUNCTUATOR, ")");
-            //                return std::make_unique<CallExprAST>(id, std::move(args), current_package);
-            //            }
             return std::make_unique<IdentifierExprAST>(id, current_package);
         }
         currentToken.error("Invalid value expression");
@@ -176,15 +171,41 @@ class Parser {
         auto cast = std::make_unique<TypeCastAST>(std::move(expr), cast_type);
         return cast;
     }
+    std::unique_ptr<ExprAST> parseArray() {
+        expect(TokenType::PUNCTUATOR, "[");
+        std::unique_ptr<NumberExprAST> num = nullptr;
+        if (match(TokenType::NUMBER)) {
+            num = std::make_unique<NumberExprAST>(expect(TokenType::NUMBER));
+        }
+        expect(TokenType::PUNCTUATOR, "]");
+        Token array_type = expect(TokenType::KEYWORD);
+        expect(TokenType::PUNCTUATOR, "{");
+        std::vector<std::unique_ptr<ExprAST>> args;
+        if (!match(TokenType::PUNCTUATOR, "}")) {
+            while (true) {
+                args.push_back(parseExpr());
+                if (!match(TokenType::PUNCTUATOR, ",")) {
+                    break;
+                }
+                expect(TokenType::PUNCTUATOR, ",");
+            }
+        }
+        expect(TokenType::PUNCTUATOR, "}");
+        return std::make_unique<ArrayExprAST>(array_type, std::move(num), std::move(args));
+    }
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
         // std::cout << "ExprAST at " << currentToken << std::endl;
         std::unique_ptr<ExprAST> lhs;
         // run into problems bcoz, expr thinks "false" is a typecast
         // hacky solution for now, not proud of it
-        if (match(TokenType::KEYWORD) && !match(TokenType::KEYWORD, "true") && !match(TokenType::KEYWORD, "false")) {
+        if (match(TokenType::KEYWORD) && !match(TokenType::KEYWORD, "true") && !match(TokenType::KEYWORD, "false"))
             lhs = parseTypeCast();
-        } else
-            lhs = match(TokenType::PUNCTUATOR, "(") ? parseParenExpr() : parseTerm();
+        else if (match(TokenType::PUNCTUATOR, "("))
+            lhs = parseParenExpr();
+        else if (match(TokenType::PUNCTUATOR, "["))
+            lhs = parseArray();
+        else
+            lhs = parseTerm();
         while (true) {
             if (!match_binop()) {
                 return lhs;
@@ -258,17 +279,24 @@ class Parser {
         // std::cout << tokenToString(currentToken) << std::endl;
         Token id = currentToken;
         next();
+        std::unique_ptr<ExprAST> index = nullptr;
+        if (match(TokenType::PUNCTUATOR, "[")) {
+            expect(TokenType::PUNCTUATOR, "[");
+            index = parseExpr();
+            expect(TokenType::PUNCTUATOR, "]");
+        }
         if (match(TokenType::PUNCTUATOR, ":=")) {
             next();
             auto expr = parseExpr();
             expect(TokenType::NEWLINE);
-
+            if (index != nullptr)
+                error("attempt to declare an element inside the array.");
             return std::make_unique<DeclarationAST>(id, std::move(expr), current_package);
         } else if (match(TokenType::PUNCTUATOR, "=")) {
             next();
             auto expr = parseExpr();
             expect(TokenType::NEWLINE);
-            return std::make_unique<AssignmentAST>(id, std::move(expr), current_package);
+            return std::make_unique<AssignmentAST>(id, std::move(expr), current_package, std::move(index));
         }
         currentToken.error("Unknown declaration statement");
     }
@@ -315,7 +343,11 @@ class Parser {
             return parseBreakContinue();
         // std::cout << "not bc " << currentToken << std::endl;
         if (match(TokenType::IDENTIFIER) &&
-            (matchnext(TokenType::PUNCTUATOR, ":=") || matchnext(TokenType::PUNCTUATOR, "=")))
+            (matchnext(TokenType::PUNCTUATOR, "[") ||
+             matchnext(TokenType::PUNCTUATOR, ":=") || // this is not actually correct, bcoz if the statement is just
+                                                       // arr[ind] this will try to parse dec/ass but its just an expr
+                                                       // but for now, its good enough
+             matchnext(TokenType::PUNCTUATOR, "=")))
             return parseDeclarationAssignment();
         // std::cout << "not da " << currentToken << std::endl;
         return parseJustExpr();

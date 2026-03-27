@@ -1,2 +1,3 @@
-build
-bvm
+/build/
+/bvm/
+/test/
