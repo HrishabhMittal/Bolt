@@ -290,8 +290,8 @@ class ExprAST : public AST {
 class TypeCastAST : public ExprAST {
   public:
     std::unique_ptr<ExprAST> arg;
-    Token cast_to;
-    TypeCastAST(std::unique_ptr<ExprAST> arg, Token t) : arg(std::move(arg)), cast_to(t) {}
+    std::string cast_to;
+    TypeCastAST(std::unique_ptr<ExprAST> arg, std::string t) : arg(std::move(arg)), cast_to(t) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         indent += 2;
@@ -303,10 +303,10 @@ class TypeCastAST : public ExprAST {
         arg->print();
     }
     virtual std::vector<std::string> get_dependencies() override { return arg->get_dependencies(); }
-    virtual std::string evaltype(Program &program) override { return cast_to.value; }
+    virtual std::string evaltype(Program &program) override { return cast_to; }
     virtual void codegen(Program &program) override {
         std::string argtype = arg->evaltype(program);
-        std::string target = cast_to.value;
+        std::string target = cast_to;
         arg->codegen(program);
         if (argtype == target)
             return;
@@ -378,7 +378,7 @@ class TypeCastAST : public ExprAST {
                 return;
             }
         }
-        cast_to.error("conversion from type: " + argtype + " to type: " + cast_to.value + " is not possible.");
+        error("conversion from type: " + argtype + " to type: " + cast_to + " is not possible.");
     }
 };
 class BinaryExprAST : public ExprAST {
@@ -739,9 +739,9 @@ class CallExprAST : public ExprAST {
 class ArrayIndexedAST : public ExprAST {
 
   public:
-    std::unique_ptr<IdentifierExprAST> array;
+    std::unique_ptr<ExprAST> array;
     std::unique_ptr<ExprAST> index;
-    ArrayIndexedAST(std::unique_ptr<IdentifierExprAST> array, std::unique_ptr<ExprAST> index)
+    ArrayIndexedAST(std::unique_ptr<ExprAST> array, std::unique_ptr<ExprAST> index)
         : array(std::move(array)), index(std::move(index)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
@@ -781,10 +781,10 @@ class ArrayIndexedAST : public ExprAST {
 class ArrayExprAST : public ExprAST {
 
   public:
-    Token type;
+    std::string type;
     std::unique_ptr<NumberExprAST> size;
     std::vector<std::unique_ptr<ExprAST>> args;
-    ArrayExprAST(Token t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a)
+    ArrayExprAST(std::string t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a)
         : type(t), args(std::move(a)), size(std::move(size)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
@@ -804,9 +804,9 @@ class ArrayExprAST : public ExprAST {
         }
         return deps;
     }
-    virtual std::string evaltype(Program &program) override { return "[]" + type.value; }
+    virtual std::string evaltype(Program &program) override { return "[]" + type; }
     virtual void codegen(Program &program) override {
-        int32_t type_size = get_type_size(type.value);
+        int32_t type_size = get_type_size(type);
         uint64_t val;
         if (size == nullptr)
             val = type_size * args.size();
@@ -910,7 +910,8 @@ class AssignmentAST : public StatementAST {
             program.push({store_type(get_type_size(element_type)), {}});
         } else {
             if (expr_type != iden_type) {
-                error("attempt to assign " + expr_type + " to " + identifier.value + " of type " + iden_type + " failed.");
+                error("attempt to assign " + expr_type + " to " + identifier.value + " of type " + iden_type +
+                      " failed.");
             }
             expr->codegen(program);
             program.push(
@@ -922,8 +923,8 @@ class AssignmentAST : public StatementAST {
 class PrototypeAST : public StatementAST {
   public:
     std::string pkg_name;
-    std::vector<std::pair<Token, Token>> args;
-    PrototypeAST(std::vector<std::pair<Token, Token>> a, std::string pkg) : pkg_name(pkg), args(std::move(a)) {}
+    std::vector<std::pair<std::string, Token>> args;
+    PrototypeAST(std::vector<std::pair<std::string, Token>> a, std::string pkg) : pkg_name(pkg), args(std::move(a)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "PrototypeAST: " << std::endl;
@@ -936,14 +937,14 @@ class PrototypeAST : public StatementAST {
     std::vector<std::string> type_list() {
         std::vector<std::string> v;
         for (auto &i : args)
-            v.push_back(i.first.value);
+            v.push_back(i.first);
         return v;
     }
     virtual void codegen(Program &program) override {
         if (args.size() == 0)
             return;
         for (ssize_t i = static_cast<int64_t>(args.size()) - 1; i >= 0; i--) {
-            Identifier iden{args[i].second.value, args[i].first.value};
+            Identifier iden{args[i].second.value, args[i].first};
             program.declare(iden);
             program.push({bvm::OPCODE::STORE, std::bit_cast<uint64_t>(program.getaddress(iden.name, pkg_name))});
         }
@@ -990,9 +991,9 @@ class ExternFunctionAST : public GlobalStatementAST {
   public:
     Token name;
     std::unique_ptr<PrototypeAST> proto;
-    Token returnType;
+    std::string returnType;
     std::string pkg_name;
-    ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Token r, std::string pkg)
+    ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, std::string r, std::string pkg)
         : name(n), proto(std::move(p)), returnType(r), pkg_name(pkg) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
@@ -1006,17 +1007,17 @@ class ExternFunctionAST : public GlobalStatementAST {
     }
     virtual void codegen(Program &program) override {
         std::string resolved_name = pkg_name + "." + name.value;
-        program.declare_function({UINT64_MAX, resolved_name, proto->type_list(), returnType.value, true});
+        program.declare_function({UINT64_MAX, resolved_name, proto->type_list(), returnType, true});
     }
 };
 class FunctionAST : public GlobalStatementAST {
   public:
     Token name;
     std::unique_ptr<PrototypeAST> proto;
-    Token returnType;
+    std::string returnType;
     std::string pkg_name;
     std::unique_ptr<BlockAST> body;
-    FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Token r, std::unique_ptr<BlockAST> b, std::string pkg)
+    FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, std::string r, std::unique_ptr<BlockAST> b, std::string pkg)
         : name(n), proto(std::move(p)), returnType(r), body(std::move(b)), pkg_name(pkg) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
@@ -1037,7 +1038,7 @@ class FunctionAST : public GlobalStatementAST {
         // kinda useless now but ok
         // EDIT: i CANNOT remember what above comment was for :skull: (pretend ts is a skull)
         uint64_t ip = program.get_ip();
-        Function func{ip, resolved_name, proto->type_list(), returnType.value};
+        Function func{ip, resolved_name, proto->type_list(), returnType};
         program.declare_function(func);
         program.new_scope();
         proto->codegen(program);

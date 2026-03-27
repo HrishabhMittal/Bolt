@@ -22,13 +22,14 @@
 #include <vector>
 inline std::string alone = "(){}[];,.";
 inline std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
-inline std::vector<std::string> keywords = {"if",     "else",   "while",    "break",  "continue", "for",  "struct",
-                                            "return", "extern", "function", "import", "package",  "void", "bool",
-                                            "string", "true",   "false",    "u8",     "u16",      "u32",  "u64",
-                                            "i8",     "i16",    "i32",      "i64",    "f32",      "f64"};
+inline std::vector<std::string> keywords = {"if",     "else",   "while",    "break",  "continue", "for", "struct",
+                                            "return", "extern", "function", "import", "package",  "as",  "void",
+                                            "bool",   "string", "true",     "false",  "u8",       "u16", "u32",
+                                            "u64",    "i8",     "i16",      "i32",    "i64",      "f32", "f64"};
 [[noreturn]] inline void error(const std::string &msg, int32_t exitcode = 1) {
     std::cout << msg << std::endl;
-    throw std::runtime_error("debug runtime error"); // for debugging this is pretty good bcoz gdb gives call stack on backtrace
+    throw std::runtime_error(
+        "debug runtime error"); // for debugging this is pretty good bcoz gdb gives call stack on backtrace
     std::exit(exitcode);
 }
 inline std::string repeat(const std::string &s, int i) {
@@ -162,7 +163,7 @@ struct Token {
         const std::string &safeline = (line == nullptr) ? std::string() : *line;
         std::cerr << "At: " << std::endl;
         printTokenUnderlined();
-        std::cout<<"token of type: "<<tokenTypeToStr(ttype)<<std::endl;
+        std::cout << "token of type: " << tokenTypeToStr(ttype) << std::endl;
         ::error(msg);
     }
     // maybe i have to remove this if i run into problems later

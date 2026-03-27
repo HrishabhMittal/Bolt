@@ -33,12 +33,12 @@ class Emitter {
             for (auto &statement : prog->statements) {
                 if (auto func = dynamic_cast<FunctionAST *>(statement.get())) {
                     std::string extend = func->pkg_name + "." + func->name.value;
-                    program.declare_function({UINT64_MAX, extend, func->proto->type_list(), func->returnType.value});
+                    program.declare_function({UINT64_MAX, extend, func->proto->type_list(), func->returnType});
                     functions.push_back(func);
                 } else if (auto ext = dynamic_cast<ExternFunctionAST *>(statement.get())) {
                     std::string extend = ext->pkg_name + "." + ext->name.value;
                     program.declare_function(
-                        {UINT64_MAX, extend, ext->proto->type_list(), ext->returnType.value, true});
+                        {UINT64_MAX, extend, ext->proto->type_list(), ext->returnType, true});
                 } else if (auto glob = dynamic_cast<GlobalDeclarationAST *>(statement.get())) {
                     std::string extend = glob->pkg_name + "." + glob->identifier.value;
                     globals.push_back(glob);
