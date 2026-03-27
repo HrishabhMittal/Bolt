@@ -70,11 +70,11 @@ class Parser {
                 return pkg + "." + struct_name.value;
             }
             return current_package + "." + id.value;
-        } else if (match(TokenType::PUNCTUATOR,"[")) {
-            expect(TokenType::PUNCTUATOR,"[");
-            expect(TokenType::PUNCTUATOR,"]");
-            std::string t=parseTypeName();
-            return "[]"+t;
+        } else if (match(TokenType::PUNCTUATOR, "[")) {
+            expect(TokenType::PUNCTUATOR, "[");
+            expect(TokenType::PUNCTUATOR, "]");
+            std::string t = parseTypeName();
+            return "[]" + t;
         }
         currentToken.error("expected a type name (built-in or struct)");
     }
@@ -144,7 +144,7 @@ class Parser {
                     expect(TokenType::PUNCTUATOR, "[");
                     std::unique_ptr<ExprAST> index = parseExpr();
                     expect(TokenType::PUNCTUATOR, "]");
-                    iden=std::make_unique<ArrayIndexedAST>(std::move(iden), std::move(index));
+                    iden = std::make_unique<ArrayIndexedAST>(std::move(iden), std::move(index));
                 }
                 return iden;
             }
@@ -293,32 +293,29 @@ class Parser {
         }
         currentToken.error("Unknown global declaration statement");
     }
-    std::unique_ptr<StatementAST> parseDeclarationAssignment() {
-        // std::cout << "parsing dec/ass at: ";
+    std::unique_ptr<ExprAST> parseLvalue() {
+        Token id = expect(TokenType::IDENTIFIER);
 
-        // std::cout << tokenToString(currentToken) << std::endl;
-        Token id = currentToken;
-        next();
-        std::unique_ptr<ExprAST> index = nullptr;
-        if (match(TokenType::PUNCTUATOR, "[")) {
+        std::string pkg = id.value;
+        if (match(TokenType::PUNCTUATOR, ".")) {
+            next();
+            Token field = expect(TokenType::IDENTIFIER);
+            if (current_imports.count(id.value)) {
+                pkg = current_imports[id.value];
+            }
+            id.value = pkg + "." + field.value;
+        }
+
+        std::unique_ptr<ExprAST> lhs = std::make_unique<IdentifierExprAST>(id, current_package);
+
+        while (match(TokenType::PUNCTUATOR, "[")) {
             expect(TokenType::PUNCTUATOR, "[");
-            index = parseExpr();
+            std::unique_ptr<ExprAST> index = parseExpr();
             expect(TokenType::PUNCTUATOR, "]");
+            lhs = std::make_unique<ArrayIndexedAST>(std::move(lhs), std::move(index));
         }
-        if (match(TokenType::PUNCTUATOR, ":=")) {
-            next();
-            auto expr = parseExpr();
-            expect(TokenType::NEWLINE);
-            if (index != nullptr)
-                error("attempt to declare an element inside the array.");
-            return std::make_unique<DeclarationAST>(id, std::move(expr), current_package);
-        } else if (match(TokenType::PUNCTUATOR, "=")) {
-            next();
-            auto expr = parseExpr();
-            expect(TokenType::NEWLINE);
-            return std::make_unique<AssignmentAST>(id, std::move(expr), current_package, std::move(index));
-        }
-        currentToken.error("Unknown declaration statement");
+
+        return lhs;
     }
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement() {
         // std::cout << "parsing statment at: ";
@@ -334,12 +331,37 @@ class Parser {
         // return std::move(x);
         currentToken.error("Unknown global statement");
     }
-    std::unique_ptr<StatementAST> parseJustExpr() {
+    std::unique_ptr<StatementAST> parseJustExpr(bool For = false) {
         // std::cout << "parsing justexpr at: ";
         // std::cout << currentToken << std::endl;
         auto x = parseExpr();
-        expect(TokenType::NEWLINE);
+        if (!For)
+            expect(TokenType::NEWLINE);
         return std::make_unique<JustExprAST>(std::move(x));
+    }
+    std::unique_ptr<StatementAST> parseDeclarationAssignmentOrExpr(bool For = false) {
+        auto lhs = parseExpr();
+        if (match(TokenType::PUNCTUATOR, ":=")) {
+            next();
+            auto rhs = parseExpr();
+            if (!For)
+                expect(TokenType::NEWLINE);
+            if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
+                return std::make_unique<DeclarationAST>(idNode->identifier, std::move(rhs), idNode->pkg_name);
+            } else {
+                error("Invalid left-hand side for declaration.");
+            }
+        } else if (match(TokenType::PUNCTUATOR, "=")) {
+            next();
+            auto rhs = parseExpr();
+            if (!For)
+                expect(TokenType::NEWLINE);
+            return std::make_unique<AssignmentAST>(std::move(lhs), std::move(rhs), current_package);
+        } else {
+            if (!For)
+                expect(TokenType::NEWLINE);
+            return std::make_unique<JustExprAST>(std::move(lhs));
+        }
     }
     std::unique_ptr<StatementAST> parseStatement() {
         // std::cout << "parsing statment at: ";
@@ -362,16 +384,7 @@ class Parser {
         if (insideLoop && (match(TokenType::KEYWORD, "break") || match(TokenType::KEYWORD, "continue")))
             return parseBreakContinue();
         // std::cout << "not bc " << currentToken << std::endl;
-        if (match(TokenType::IDENTIFIER) &&
-            (matchnext(TokenType::PUNCTUATOR, "[") ||
-             matchnext(TokenType::PUNCTUATOR, ":=") || // this is not actually correct, bcoz if the statement is just
-                                                       // arr[ind] this will try to parse dec/ass but its just an expr
-                                                       // but for now, its good enough
-             matchnext(TokenType::PUNCTUATOR, "=")))
-            return parseDeclarationAssignment();
-        // std::cout << "not da " << currentToken << std::endl;
-        return parseJustExpr();
-        currentToken.error("Unknown expr statement");
+        return parseDeclarationAssignmentOrExpr();
     }
     std::unique_ptr<PrototypeAST> parsePrototype() {
         // std::cout << "parsing proto: " << std::endl;
@@ -441,38 +454,21 @@ class Parser {
 
     // specifically for for statements
     std::unique_ptr<AssignmentAST> parseAssignmentNoSemicolon() {
-        Token update_id = expect(TokenType::IDENTIFIER);
+        auto update_id = parseLvalue();
         expect(TokenType::PUNCTUATOR, "=");
         auto update_expr = parseExpr();
-        auto update = std::make_unique<AssignmentAST>(update_id, std::move(update_expr), current_package);
+        auto update = std::make_unique<AssignmentAST>(std::move(update_id), std::move(update_expr), current_package);
         return update;
-    }
-    std::unique_ptr<StatementAST> parseForDeclarationAssignment() {
-        // std::cout << "parsing dec/ass at: ";
-
-        // std::cout << tokenToString(currentToken) << std::endl;
-        Token id = currentToken;
-        next();
-        if (match(TokenType::PUNCTUATOR, ":=")) {
-            next();
-            auto expr = parseExpr();
-            return std::make_unique<DeclarationAST>(id, std::move(expr), current_package);
-        } else if (match(TokenType::PUNCTUATOR, "=")) {
-            next();
-            auto expr = parseExpr();
-            return std::make_unique<AssignmentAST>(id, std::move(expr), current_package);
-        }
-        currentToken.error("Unknown for decl statement");
     }
     std::unique_ptr<StatementAST> parseFor() {
         // std::cout << "parsing for: " << std::endl;
         // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "for");
-        auto init = parseForDeclarationAssignment();
+        auto init = parseDeclarationAssignmentOrExpr(true);
         expect(TokenType::PUNCTUATOR, ";");
         auto cond = parseExpr();
         expect(TokenType::PUNCTUATOR, ";");
-        auto update = parseAssignmentNoSemicolon();
+        auto update = parseDeclarationAssignmentOrExpr(true);
         insideLoop++;
         auto body = parseBlock();
         insideLoop--;

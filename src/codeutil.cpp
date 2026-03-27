@@ -17,7 +17,6 @@ std::vector<std::vector<std::string>> ops_by_precedence = {
     {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="},
 };
 std::vector<std::vector<std::string>> binops_by_precedence = {
-    {".*", "->*"},
     {"*", "/", "%"},
     {"+", "-"},
     {"<<", ">>"},
@@ -28,5 +27,4 @@ std::vector<std::vector<std::string>> binops_by_precedence = {
     {"|"},
     {"&&"},
     {"||"},
-    {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="},
 };

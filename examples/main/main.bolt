@@ -27,5 +27,10 @@ function main() (i32) {
     
     fmt.printi32(arr2[0][0])
     fmt.printstring("\n")
+
+    arr2[0][0]=3
+
+    fmt.printi32(arr2[0][0])
+    fmt.printstring("\n")
     return 120
 }

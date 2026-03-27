@@ -875,49 +875,52 @@ class DeclarationAST : public StatementAST {
         program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
     }
 };
-
-// mark
 class AssignmentAST : public StatementAST {
   public:
-    Token identifier;
-    std::unique_ptr<ExprAST> index;
+    std::unique_ptr<ExprAST> lhs;
     std::unique_ptr<ExprAST> expr;
     std::string pkg_name;
-    AssignmentAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, std::unique_ptr<ExprAST> index = nullptr)
-        : pkg_name(pkg), identifier(id), expr(std::move(e)), index(std::move(index)) {}
+    AssignmentAST(std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> e, std::string pkg)
+        : pkg_name(pkg), expr(std::move(e)), lhs(std::move(lhs)) {}
     virtual void print(int indent = 0) override {
         printSpace(indent);
         std::cout << "AssignmentAST: " << std::endl;
         indent += 2;
         printSpace(indent);
-        std::cout << "callee: " << identifier << std::endl;
+        std::cout << "assigned to: " << std::endl;
+        printSpace(indent);
+        lhs->print(indent);
+        std::cout << "expr to: " << std::endl;
         expr->print(indent);
     }
     virtual void codegen(Program &program) override {
         std::string expr_type = expr->evaltype(program);
-        std::string iden_type = program.gettype(identifier.value, pkg_name);
-        if (iden_type.substr(0, 2) == "[]" && index != nullptr) {
-            program.push(
-                {bvm::OPCODE::LOAD, {std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name))}});
-            std::string index_type = index->evaltype(program);
-            if (index_type != "i32")
-                error("array index is not of value i32");
-            index->codegen(program);
-            std::string element_type = iden_type.substr(2);
-            if (element_type != expr_type)
-                error("cannot assign value of type " + expr_type + " to " + element_type);
-            expr->codegen(program);
-            program.push({store_type(get_type_size(element_type)), {}});
-        } else {
+        if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
+            std::string iden_type = program.gettype(idNode->identifier.value, idNode->pkg_name);
             if (expr_type != iden_type) {
-                error("attempt to assign " + expr_type + " to " + identifier.value + " of type " + iden_type +
+                error("attempt to assign " + expr_type + " to " + idNode->identifier.value + " of type " + iden_type +
                       " failed.");
             }
             expr->codegen(program);
-            program.push(
-                {bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name))}});
+            program.push({bvm::OPCODE::STORE,
+                          {std::bit_cast<uint64_t>(program.getaddress(idNode->identifier.value, idNode->pkg_name))}});
+        } else if (auto arr = dynamic_cast<ArrayIndexedAST *>(lhs.get())) {
+            std::string arr_type = arr->array->evaltype(program);
+            std::string element_type = arr_type.substr(2);
+            if (element_type != expr_type)
+                error("cannot assign value of type " + expr_type + " to array element of type " + element_type);
+            std::string index_type = arr->index->evaltype(program);
+            if (index_type != "i32")
+                error("array index must be i32");
+            arr->array->codegen(program);
+            arr->index->codegen(program);
+            expr->codegen(program);
+            program.push({store_type(get_type_size(element_type)), {}});
+        } else {
+            error("Invalid left-hand side in assignment");
         }
     }
+
 };
 
 class PrototypeAST : public StatementAST {
