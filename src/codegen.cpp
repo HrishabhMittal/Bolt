@@ -1258,7 +1258,12 @@ class JustExprAST : public StatementAST {
         printSpace(indent);
         std::cout << "BLAH BLAH" << std::endl;
     }
-    virtual void codegen(Program &program) override { expr->codegen(program); }
+    virtual void codegen(Program &program) override {
+        expr->codegen(program);
+        if (expr->evaltype(program)!="void") {
+            program.push({bvm::OPCODE::POP});
+        }
+    }
 };
 
 class ProgramAST : public AST {
