@@ -1,4 +1,3 @@
-### README.md
 # Bolt
 
 Bolt is a statically-typed programming language running on the Bolt Virtual Machine (BVM). 
@@ -27,7 +26,7 @@ note that running the example below currently required `fmt/` folder to be in th
 and running it requires you to provide the stdlib implementations of print functions dynamically.
 See `run.sh` for more details.
 
-```bolt
+```go
 package main
 import "fmt"
 
