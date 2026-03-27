@@ -19,7 +19,7 @@
 - [X] import keyword
 - [X] defining internal functions and calling their bytecode
 - [X] add `print()` to actually print stuff
-- [ ] add arrays
+- [X] add arrays
 - [ ] structs with methods
 - [ ] enums
 - [ ] generics
