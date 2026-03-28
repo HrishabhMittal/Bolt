@@ -21,8 +21,9 @@
 - [X] add `print()` to actually print stuff
 - [X] add arrays
 - [ ] structs with methods
-- [ ] enums
+- [ ] enums (rust-like)
 - [ ] generics
+- [ ] function overloading?
 - [ ] anonymous functions
 - [ ] build stdlib
 - [ ] change syntax
