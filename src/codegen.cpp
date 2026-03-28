@@ -58,6 +58,10 @@ struct function_code_and_offset {
     std::vector<bvm::instruction> code;
     uint64_t offset = 0;
 };
+struct loop_break_continue {
+    uint64_t undeclare;
+    uint64_t index;
+};
 class Program {
     uint64_t iden_stack_size = 0;
     std::string pushing_to_func;
@@ -65,7 +69,6 @@ class Program {
     std::string data_section;
     // instructions i need to patch, which contain function calls
     std::map<std::string, std::vector<call_ref_in_map>> patch_function;
-
     // function code should be pushed here instead
     // idea is:
     // i need to rearrage the code like this
@@ -77,6 +80,8 @@ class Program {
     //
     // need to store all function calls and patch them in the end
     std::map<std::string, function_code_and_offset> function_code;
+    std::vector<std::vector<loop_break_continue>> breaks, continues;
+    std::vector<uint64_t> declared;
     std::vector<bvm::instruction> code;
     std::vector<std::vector<Identifier>> scope;
     std::map<std::string, Function> funcs;
@@ -93,6 +98,38 @@ class Program {
         code.reserve(1024);
         scope.reserve(16);
         scope.push_back({});
+    }
+    void add_break(uint64_t undeclare_then_jmp_ptr) {
+        loop_break_continue bc;
+        bc.undeclare = scope.back().size();
+        bc.index = undeclare_then_jmp_ptr;
+        breaks.back().push_back(bc);
+    }
+    void add_continues(uint64_t undeclare_then_jmp_ptr) {
+        loop_break_continue bc;
+        bc.undeclare = scope.back().size();
+        bc.index = undeclare_then_jmp_ptr;
+        continues.back().push_back(bc);
+    }
+    void new_loop() {
+        breaks.push_back({});
+        continues.push_back({});
+        declared.push_back(iden_stack_size);
+    }
+    void end_loop() {
+        breaks.pop_back();
+        continues.pop_back();
+        declared.pop_back();
+    }
+    void patch_bc(uint64_t start, uint64_t end) {
+        for (auto i : breaks.back()) {
+            (*this)[i.index].operands[0] = i.undeclare;
+            (*this)[i.index + 1].operands[0] = end;
+        }
+        for (auto i : continues.back()) {
+            (*this)[i.index].operands[0] = i.undeclare;
+            (*this)[i.index + 1].operands[0] = start;
+        }
     }
     bvm::program construct_full_code() {
         // global decls alr there
@@ -920,7 +957,6 @@ class AssignmentAST : public StatementAST {
             error("Invalid left-hand side in assignment");
         }
     }
-
 };
 
 class PrototypeAST : public StatementAST {
@@ -1141,9 +1177,13 @@ class WhileAST : public StatementAST {
         condition->codegen(program);
         size_t jnc = program.size();
         program.push({bvm::OPCODE::JNC, {}});
+        program.new_loop();
         body->codegen(program, push_scope);
         program.push({bvm::OPCODE::JMP, while_start});
-        program[jnc].operands[0] = program.size();
+        size_t while_end = program.size();
+        program.patch_bc(while_start, while_end);
+        program[jnc].operands[0] = while_end;
+        program.end_loop();
     }
 };
 
@@ -1184,10 +1224,14 @@ class ForAST : public StatementAST {
         condition->codegen(program);
         size_t jnc = program.size();
         program.push({bvm::OPCODE::JNC, {}});
+        program.new_loop();
         body->codegen(program, push_scope);
         update->codegen(program);
         program.push({bvm::OPCODE::JMP, for_start});
-        program[jnc].operands[0] = program.size();
+        size_t for_end = program.size();
+        program[jnc].operands[0] = for_end;
+        program.patch_bc(for_start, for_end);
+        program.end_loop();
         program.delete_scope();
     }
 };
@@ -1222,7 +1266,14 @@ class BreakContinueAST : public StatementAST {
         printSpace(indent);
         std::cout << "keyword: " << keyword << std::endl;
     }
-    virtual void codegen(Program &program) override { error("break/continue not implemented"); }
+    virtual void codegen(Program &program) override {
+        if (keyword.value == "break")
+            program.add_break(program.size());
+        else
+            program.add_continues(program.size());
+        program.push({bvm::OPCODE::UNDECLARE});
+        program.push({bvm::OPCODE::JMP});
+    }
 };
 class ImportAST : public StatementAST {
   public:
@@ -1260,7 +1311,7 @@ class JustExprAST : public StatementAST {
     }
     virtual void codegen(Program &program) override {
         expr->codegen(program);
-        if (expr->evaltype(program)!="void") {
+        if (expr->evaltype(program) != "void") {
             program.push({bvm::OPCODE::POP});
         }
     }

@@ -98,13 +98,11 @@ class Lexer {
         int64_t char_pos;
     };
 
-    checkpoint get_checkpoint() { 
-        return {pos_line, pos_char}; 
-    }
-    
-    void restore(checkpoint cp) { 
-        pos_line = cp.line; 
-        pos_char = cp.char_pos; 
+    checkpoint get_checkpoint() { return {pos_line, pos_char}; }
+
+    void restore(checkpoint cp) {
+        pos_line = cp.line;
+        pos_char = cp.char_pos;
     }
     Token peektoken() {
         int64_t p_line = pos_line;

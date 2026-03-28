@@ -11,26 +11,49 @@ function printArray(arr []i32,len i32) (void) {
     fmt.printstring("]\n")
 }
 
+function someBC() (void) {
+    i:=0
+    while true {
+        if i==5 {
+            break
+        }
+        i=i+1
+    }
+    fmt.printi32(i)
+    fmt.printstring("\n")
+    for i:=0;i<10;i=i+1 {
+        if i>3 {
+            break
+        }
+        fmt.printi32(i)
+        fmt.printstring("\n")
+    }
+}
+
+
 function main() (i32) {
-    fmt.printi32(mathlib.fibonacci(5))
-    fmt.printstring("\n")
+    # fmt.printi32(mathlib.fibonacci(5))
+    # fmt.printstring("\n")
 
-    fmt.printi32(mathlib.factorial(5))
-    fmt.printstring("\n")
+    # fmt.printi32(mathlib.factorial(5))
+    # fmt.printstring("\n")
 
-    arr := []i32{0,1,2,3,4,5,6}
-    printArray(arr,7)
-    arr[4]=5
-    printArray(arr,7)
+    # arr := []i32{0,1,2,3,4,5,6}
+    # printArray(arr,7)
+    # arr[4]=5
+    # printArray(arr,7)
 
-    arr2 := [][]i32{[]i32{1,2},[]i32{2,3}}
-    
-    fmt.printi32(arr2[0][0])
-    fmt.printstring("\n")
+    # arr2 := [][]i32{[]i32{1,2},[]i32{2,3}}
+    # 
+    # fmt.printi32(arr2[0][0])
+    # fmt.printstring("\n")
 
-    arr2[0][0]=3
+    # arr2[0][0]=3
 
-    fmt.printi32(arr2[0][0])
-    fmt.printstring("\n")
+    # fmt.printi32(arr2[0][0])
+    # fmt.printstring("\n")
+
+
+    someBC()
     return 120
 }
